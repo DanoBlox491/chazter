@@ -6,6 +6,8 @@ import { useConversations } from '../../hooks/useConversations.js';
 import { useMediaQuery } from '../../hooks/useMisc.js';
 import { MessageSkeleton } from '../ui/States.jsx';
 import { NewChatContext } from '../../context/NewChatContext.jsx';
+import { UpdateBanner, UpdateDialog } from '../system/UpdateChecker.jsx';
+import { useUpdateCheck } from '../../hooks/useUpdateCheck.js';
 
 /**
  * AppShell — the persistent frame around the workspace.
@@ -22,6 +24,8 @@ export function AppShell() {
   const [composerOpen, setComposerOpen] = useState(false);
   const [newChatMode, setNewChatMode] = useState('direct');
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const update = useUpdateCheck();
+  const [updateOpen, setUpdateOpen] = useState(false);
 
   // Cmd/Ctrl+K opens the command palette from anywhere in the app.
   useEffect(() => {
@@ -59,6 +63,8 @@ export function AppShell() {
         newChatMode,
         closeComposer: () => setComposerOpen(false),
         openPalette: () => setPaletteOpen(true),
+        update,
+        openUpdateDialog: () => setUpdateOpen(true),
       }}
     >
       <div className="app-shell">
@@ -67,13 +73,23 @@ export function AppShell() {
           Skip to conversations
         </a>
         <NavRail />
-        <div className="app-shell__surface" id="workspace">
-          <Suspense fallback={<div className="app-shell__fallback"><MessageSkeleton /></div>}>
-            <Outlet />
-          </Suspense>
+        <div className="app-shell__body">
+          <UpdateBanner update={update} onOpen={() => setUpdateOpen(true)} />
+          <div className="app-shell__surface" id="workspace">
+            <Suspense fallback={<div className="app-shell__fallback"><MessageSkeleton /></div>}>
+              <Outlet />
+            </Suspense>
+          </div>
         </div>
       </div>
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      <UpdateDialog
+        open={updateOpen}
+        onClose={() => setUpdateOpen(false)}
+        update={update}
+        onCheck={update.check}
+        checking={update.status === 'checking'}
+      />
     </NewChatContext.Provider>
   );
 }

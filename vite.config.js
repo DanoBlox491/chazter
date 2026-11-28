@@ -1,5 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { buildInfoPlugin } from './vite-plugins/build-info.js';
+import { RELEASE_NOTES } from './vite-plugins/release-notes.js';
 
 /**
  * CHAZTER build configuration.
@@ -13,7 +15,9 @@ import react from '@vitejs/plugin-react';
  */
 export default defineConfig(({ mode }) => ({
   base: process.env.VITE_BASE_PATH || '/',
-  plugins: [react()],
+  // Publishes build identity for the in-app update checker (see
+  // src/components/system/UpdateChecker.jsx).
+  plugins: [react(), buildInfoPlugin({ releaseNotes: RELEASE_NOTES })],
   server: {
     host: '0.0.0.0',
     port: 5173,
@@ -29,6 +33,12 @@ export default defineConfig(({ mode }) => ({
     host: '0.0.0.0',
     port: 4173,
     strictPort: true,
+  },
+  // Vite statically replaces this identifier in both builds and the test
+  // runner; `buildInfoPlugin` overrides it with the real release identity at
+  // build time (see vite-plugins/build-info.js).
+  define: {
+    __BUILD_INFO__: JSON.stringify({ version: '1.0.0', buildId: 'test-build', builtAt: 0 }),
   },
   build: {
     outDir: 'dist',
