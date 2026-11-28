@@ -24,6 +24,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # A duplicated @firebase/app ships two component registries and breaks
+      # Firebase at runtime ("Component auth has not been registered yet").
+      # Fail loudly here instead of shipping a blank page.
+      - name: Verify single @firebase/app copy
+        run: |
+          count=$(find node_modules -path "*/@firebase/app/package.json" | wc -l)
+          echo "Found $count copy/copies of @firebase/app"
+          find node_modules -path "*/@firebase/app/package.json" -exec sh -c 'echo "  $1 -> $(node -p "require(\"./$1\").version")"' _ {} \;
+          test "$count" -eq 1 || { echo "::error::Duplicate @firebase/app — regenerate package-lock.json"; exit 1; }
+
       - name: Lint
         run: npm run lint
 

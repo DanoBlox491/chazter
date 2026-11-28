@@ -39,3 +39,6 @@ ui-debug.log
 
 # TypeScript build artifacts (if ever adopted)
 *.tsbuildinfo
+
+# scratch output from the bundle integrity test
+dist-bundle-test/
