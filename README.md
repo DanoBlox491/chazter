@@ -188,6 +188,12 @@ npm run deploy:rules
 That deploys **only** Firestore rules and indexes — the part the app cannot
 run without.
 
+> **Re-run this after pulling a version that adds features.** Servers and
+> invite links introduce new collections (`servers`, `invites`) and three new
+> composite indexes. Until `npm run deploy:rules` completes on the new rules,
+> every server and invite operation fails with `permission-denied` while the
+> rest of the app keeps working.
+
 > **Do not include `storage` in the same command until Cloud Storage is
 > enabled.** The Firebase CLI validates every requested target *before*
 > deploying any of them, so a missing Storage bucket aborts the whole run and
@@ -510,6 +516,8 @@ to test a rules change.
 | `Error: No currently active project` | CLI has no default project | Commit `.firebaserc` (included) or add `--project chazter-fcf99` |
 | `permission-denied` when sending | Rules deployed but out of date | Re-deploy after pulling; check `rules.contract` tests |
 | `Firebase Storage has not been set up` during deploy | Storage included before it was enabled — this aborts the whole run | `npm run deploy:rules` first, then enable Storage, then `npm run deploy:storage` |
+| Servers or invite links fail with `permission-denied` | The `servers` / `invites` rules are not deployed yet | `npm run deploy:rules` |
+| "The query requires an index" when opening a server | The channel composite index is missing | `npm run deploy:rules` deploys `firestore.indexes.json` too |
 | Image upload fails with "Storage isn't enabled" | Storage not set up | Build → Storage → Get started, then `npm run deploy:storage` |
 | Blank page on GitHub Pages | Wrong base path | Ensure `VITE_BASE_PATH=/<repo>/` at build time |
 | `Deploy to GitHub Pages` fails at *Configure GitHub Pages* with `404` / `Resource not accessible by integration` | Pages was never enabled | Settings → Pages → Source: **GitHub Actions** (one time) |

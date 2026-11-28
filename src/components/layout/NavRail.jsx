@@ -11,6 +11,7 @@ import {
   UserRoundPlus,
   UserRoundSearch,
   CheckCheck,
+  LayoutGrid,
 } from 'lucide-react';
 import { BrandMark } from '../brand/Brand.jsx';
 import { Avatar } from '../ui/Avatar.jsx';
@@ -63,6 +64,7 @@ export function NavRail() {
   const chatsActive = location.pathname === '/app' || location.pathname.startsWith('/app/c/');
   const settingsActive = location.pathname.startsWith('/app/settings');
   const peopleActive = location.pathname === '/app/people';
+  const serversActive = location.pathname.startsWith('/app/s');
   const profileActive = location.pathname.startsWith('/app/u/');
 
   return (
@@ -96,6 +98,18 @@ export function NavRail() {
               <Users size={21} strokeWidth={1.8} aria-hidden="true" />
             </span>
             <span className="nav-rail__label">People</span>
+          </NavLink>
+
+          <NavLink
+            to="/app/servers"
+            className={cx('nav-rail__item', serversActive && 'is-active')}
+            aria-label="Servers"
+            title="Servers"
+          >
+            <span className="nav-rail__icon">
+              <LayoutGrid size={21} strokeWidth={1.8} aria-hidden="true" />
+            </span>
+            <span className="nav-rail__label">Servers</span>
           </NavLink>
 
           <button
@@ -214,6 +228,10 @@ export function NavRail() {
         <Link to="/app/people" className={cx('bottom-bar__item', peopleActive && 'is-active')}>
           <Users size={22} strokeWidth={1.8} aria-hidden="true" />
           <span>People</span>
+        </Link>
+        <Link to="/app/servers" className={cx('bottom-bar__item', serversActive && 'is-active')}>
+          <LayoutGrid size={22} strokeWidth={1.8} aria-hidden="true" />
+          <span>Servers</span>
         </Link>
         <button
           type="button"
