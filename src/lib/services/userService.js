@@ -299,6 +299,9 @@ export async function getUserProfiles(uids) {
  * ------------------------------------------------------------------ */
 
 let heartbeatTimer = null;
+// `setInterval` returns a NUMBER in browsers (a Timeout object only in Node),
+// so it cannot carry properties. The visibility listener is stored separately.
+let heartbeatVisibilityHandler = null;
 let lastPresenceWrite = 0;
 
 /**
@@ -335,17 +338,19 @@ export function startPresenceHeartbeat(uid) {
     if (document.visibilityState === 'visible') setPresence(uid, 'online');
   };
   document.addEventListener('visibilitychange', onVisibility);
-  heartbeatTimer.onVisibility = onVisibility;
+  heartbeatVisibilityHandler = onVisibility;
   return stopPresenceHeartbeat;
 }
 
 export function stopPresenceHeartbeat() {
-  if (!heartbeatTimer) return;
-  clearInterval(heartbeatTimer);
-  if (heartbeatTimer.onVisibility) {
-    document.removeEventListener('visibilitychange', heartbeatTimer.onVisibility);
+  if (heartbeatTimer !== null) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
   }
-  heartbeatTimer = null;
+  if (heartbeatVisibilityHandler) {
+    document.removeEventListener('visibilitychange', heartbeatVisibilityHandler);
+    heartbeatVisibilityHandler = null;
+  }
 }
 
 /** Remove the profile and release the username claim. */
