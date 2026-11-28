@@ -1,0 +1,244 @@
+/* ==========================================================================
+   CHAZTER — design tokens
+   Brand story: "warm ink + jade, with a coral spark".
+   - Ink: deep, slightly green-black surfaces (not pure black).
+   - Jade: primary action + online states.
+   - Coral: accent for attention (unread, destructive, brand spark).
+   - Parchment: warm light-mode background instead of stark white.
+   ========================================================================== */
+
+:root {
+  /* ---- Brand ramps ---- */
+  --jade-50: #e9f8f3;
+  --jade-100: #cbefe3;
+  --jade-200: #9adfcb;
+  --jade-300: #5fc9ad;
+  --jade-400: #2fae90;
+  --jade-500: #14917a;
+  --jade-600: #0d7663;
+  --jade-700: #0b5d4f;
+  --jade-800: #0a493f;
+  --jade-900: #073830;
+
+  --coral-50: #fdeeea;
+  --coral-100: #fbd9d1;
+  --coral-200: #f6b6a6;
+  --coral-300: #f1907a;
+  --coral-400: #ea7055;
+  --coral-500: #d9553b;
+  --coral-600: #b8432c;
+
+  --amber-400: #e3ad4b;
+  --amber-500: #c8922f;
+  --sky-400: #5aa9d6;
+  --plum-400: #a47ec9;
+  --clay-400: #c98b6b;
+
+  /* ---- Typography ---- */
+  --font-sans: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Fraunces Variable', 'Fraunces', Georgia, 'Times New Roman', serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, monospace;
+
+  --text-2xs: 0.6875rem; /* 11px */
+  --text-xs: 0.75rem; /* 12px */
+  --text-sm: 0.8125rem; /* 13px */
+  --text-base: 0.9375rem; /* 15px */
+  --text-md: 1rem; /* 16px */
+  --text-lg: 1.125rem; /* 18px */
+  --text-xl: 1.375rem; /* 22px */
+  --text-2xl: 1.75rem; /* 28px */
+  --text-3xl: 2.25rem; /* 36px */
+  --text-4xl: 3rem; /* 48px */
+  --text-5xl: 4rem; /* 64px */
+
+  --leading-tight: 1.15;
+  --leading-snug: 1.3;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.65;
+
+  --tracking-tight: -0.02em;
+  --tracking-tighter: -0.035em;
+  --tracking-wide: 0.06em;
+  --tracking-widest: 0.16em;
+
+  /* ---- Geometry ---- */
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-2xl: 36px;
+  --radius-full: 999px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 56px;
+  --space-10: 72px;
+
+  --shell-max: 1480px;
+  --sidebar-width: 344px;
+  --header-height: 68px;
+  --composer-min: 56px;
+
+  /* ---- Motion ---- */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
+  --dur-slower: 560ms;
+
+  --z-sidebar: 20;
+  --z-header: 30;
+  --z-overlay: 60;
+  --z-modal: 70;
+  --z-toast: 90;
+}
+
+/* --------------------------------------------------------------------------
+   Dark theme (default)
+   -------------------------------------------------------------------------- */
+:root,
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --ink-950: #070b0a;
+  --ink-900: #0b0f0e;
+  --ink-850: #0e1413;
+  --ink-800: #121a18;
+  --ink-750: #16201d;
+  --ink-700: #1b2724;
+  --ink-600: #24322e;
+  --ink-500: #31433d;
+  --ink-400: #4a5f58;
+  --ink-300: #6e857d;
+  --ink-200: #9db0aa;
+  --ink-100: #c9d6d1;
+  --ink-50: #eef4f1;
+
+  --bg-app: #0b0f0e;
+  --bg-raised: #101715;
+  --bg-panel: #131b19;
+  --bg-elevated: #182220;
+  --bg-inset: #0a0e0d;
+  --bg-hover: rgba(255, 255, 255, 0.045);
+  --bg-active: rgba(255, 255, 255, 0.075);
+  --bg-selected: rgba(31, 174, 144, 0.13);
+  --bg-scrim: rgba(5, 8, 7, 0.66);
+
+  --surface-border: rgba(255, 255, 255, 0.07);
+  --surface-border-strong: rgba(255, 255, 255, 0.12);
+  --hairline: rgba(255, 255, 255, 0.055);
+
+  --text-primary: #edf4f1;
+  --text-secondary: #a7bab3;
+  --text-tertiary: #74877f;
+  --text-inverse: #0a0f0e;
+
+  --accent: #2fae90;
+  --accent-hover: #38c09f;
+  --accent-soft: rgba(47, 174, 144, 0.14);
+  --accent-border: rgba(47, 174, 144, 0.36);
+  --accent-text: #6fe0c2;
+
+  --danger: #e8694f;
+  --danger-soft: rgba(232, 105, 79, 0.14);
+  --success: #4fc99a;
+  --warning: #e3ad4b;
+
+  --bubble-incoming: #182220;
+  --bubble-incoming-text: #e6eeeb;
+  --bubble-outgoing: #0f6b59;
+  --bubble-outgoing-text: #f2fbf7;
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.32);
+  --shadow-md: 0 10px 30px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 24px 70px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 0 1px rgba(47, 174, 144, 0.28), 0 18px 50px rgba(10, 90, 74, 0.34);
+
+  --grid-line: rgba(255, 255, 255, 0.028);
+  --noise-opacity: 0.035;
+}
+
+/* --------------------------------------------------------------------------
+   Light theme — warm parchment, not clinical white
+   -------------------------------------------------------------------------- */
+[data-theme='light'] {
+  color-scheme: light;
+
+  --ink-950: #fbfaf6;
+  --ink-900: #f6f4ee;
+  --ink-850: #f1eee6;
+  --ink-800: #ebe7dd;
+  --ink-750: #e4dfd3;
+  --ink-700: #d9d3c5;
+  --ink-600: #c3bcac;
+  --ink-500: #a29a89;
+  --ink-400: #7d7668;
+  --ink-300: #57524a;
+  --ink-200: #45423a;
+  --ink-100: #2e2c27;
+  --ink-50: #191816;
+
+  --bg-app: #f6f4ee;
+  --bg-raised: #fbfaf6;
+  --bg-panel: #fdfcf9;
+  --bg-elevated: #ffffff;
+  --bg-inset: #efece4;
+  --bg-hover: rgba(23, 32, 29, 0.045);
+  --bg-active: rgba(23, 32, 29, 0.075);
+  --bg-selected: rgba(13, 118, 99, 0.1);
+  --bg-scrim: rgba(29, 34, 32, 0.42);
+
+  --surface-border: rgba(24, 33, 30, 0.09);
+  --surface-border-strong: rgba(24, 33, 30, 0.16);
+  --hairline: rgba(24, 33, 30, 0.07);
+
+  --text-primary: #17211f;
+  --text-secondary: #4f5b56;
+  --text-tertiary: #5f6a64;
+  --text-inverse: #fbfaf6;
+
+  --accent: #0d7663;
+  --accent-hover: #0a6554;
+  --accent-soft: rgba(13, 118, 99, 0.1);
+  --accent-border: rgba(13, 118, 99, 0.28);
+  --accent-text: #0a5d4f;
+
+  --danger: #b23c26;
+  --danger-soft: rgba(198, 71, 47, 0.1);
+  --success: #0b7353;
+  --warning: #8a6112;
+
+  --bubble-incoming: #ffffff;
+  --bubble-incoming-text: #1d2724;
+  --bubble-outgoing: #0d7663;
+  --bubble-outgoing-text: #f4fffb;
+
+  --shadow-xs: 0 1px 2px rgba(31, 41, 38, 0.07);
+  --shadow-sm: 0 2px 10px rgba(31, 41, 38, 0.08);
+  --shadow-md: 0 12px 34px rgba(31, 41, 38, 0.1);
+  --shadow-lg: 0 26px 70px rgba(31, 41, 38, 0.14);
+  --shadow-glow: 0 0 0 1px rgba(13, 118, 99, 0.22), 0 18px 50px rgba(13, 118, 99, 0.16);
+
+  --grid-line: rgba(24, 33, 30, 0.035);
+  --noise-opacity: 0.02;
+}
+
+/* Chat colour pills (groups + avatars) */
+[data-theme] {
+  --chat-jade: #2fae90;
+  --chat-coral: var(--coral-400);
+  --chat-plum: var(--plum-400);
+  --chat-amber: var(--amber-400);
+  --chat-sky: var(--sky-400);
+  --chat-clay: var(--clay-400);
+}

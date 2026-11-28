@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Chazter">
+  <defs>
+    <linearGradient id="jade" x1="8" y1="4" x2="56" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#17A184" />
+      <stop offset="1" stop-color="#0A5F4F" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="18" fill="#0D1412" />
+  <path
+    d="M46.6 18.9A19 19 0 1 0 50 32.6"
+    fill="none"
+    stroke="url(#jade)"
+    stroke-width="7.5"
+    stroke-linecap="round"
+  />
+  <circle cx="49.6" cy="38.4" r="5" fill="#F07B62" />
+</svg>

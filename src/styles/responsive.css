@@ -1,0 +1,281 @@
+/* ==========================================================================
+   CHAZTER — responsive layout
+   Desktop rail → tablet compact → mobile single-pane with bottom bar
+   ========================================================================== */
+
+/* ---- Large desktop: give the inbox more room ---- */
+@media (min-width: 1500px) {
+  :root {
+    --sidebar-width: 380px;
+  }
+}
+
+/* ---- Tablet / small laptop ---- */
+@media (max-width: 1180px) {
+  :root {
+    --sidebar-width: 312px;
+  }
+
+  .msg__content {
+    max-width: 82%;
+  }
+}
+
+/* ---- Below 900px: single pane + bottom bar ---- */
+@media (max-width: 899px) {
+  :root {
+    --sidebar-width: 100%;
+  }
+
+  .app-shell {
+    display: block;
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  .app-shell__surface {
+    height: 100%;
+    padding-bottom: calc(60px + env(safe-area-inset-bottom));
+  }
+
+  .nav-rail {
+    display: none;
+  }
+
+  .bottom-bar {
+    display: flex;
+    align-items: center;
+  }
+
+  .workspace {
+    border-inline: none;
+    height: 100%;
+  }
+
+  .workspace__inbox {
+    width: 100%;
+    border-right: none;
+    background: var(--bg-app);
+    backdrop-filter: none;
+  }
+
+  .workspace__pane {
+    width: 100%;
+  }
+
+  .workspace__inbox.is-hidden-mobile,
+  .workspace__pane.is-hidden-mobile {
+    display: none;
+  }
+
+  .inbox__header {
+    padding-top: var(--space-4);
+  }
+
+  .chat-header {
+    min-height: 58px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+
+  .chat-header__back {
+    display: inline-grid;
+  }
+
+  .chat-window {
+    height: 100%;
+  }
+
+  .chat-body {
+    padding-inline: var(--space-4);
+  }
+
+  .msg__content {
+    max-width: 86%;
+  }
+
+  .composer-wrap {
+    padding-inline: var(--space-3);
+  }
+
+  /* Settings becomes a stacked layout with horizontal tabs. */
+  .settings__layout {
+    grid-template-columns: 1fr;
+    padding-top: var(--space-4);
+  }
+
+  .settings__tabs {
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 4px;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+    margin-inline: -4px;
+    padding-inline: 4px;
+  }
+
+  .settings__tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .settings__tab {
+    width: auto;
+    white-space: nowrap;
+    font-size: var(--text-xs);
+    padding: 8px 12px;
+  }
+
+  .settings__tabs-spacer {
+    display: none;
+  }
+
+  .settings__tab--danger {
+    margin-left: auto;
+  }
+
+  .profile-page {
+    padding-top: 0;
+  }
+
+  .people {
+    padding-inline: var(--space-4);
+    padding-top: var(--space-4);
+  }
+
+  .people__header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-3);
+  }
+
+  .welcome-pane {
+    display: none;
+  }
+}
+
+/* ---- Phones ---- */
+@media (max-width: 560px) {
+  .inbox__title {
+    font-size: var(--text-xl);
+  }
+
+  .conv-row {
+    padding: 10px;
+    gap: 10px;
+  }
+
+  .new-chat__results {
+    max-height: 46dvh;
+  }
+
+  .msg__content {
+    max-width: calc(100% - 18px);
+  }
+
+  .msg__image {
+    width: 100%;
+  }
+
+  .chat-header__actions .icon-btn:first-child {
+    display: none;
+  }
+
+  .settings-panel,
+  .settings-card {
+    padding: var(--space-4);
+    border-radius: var(--radius-lg);
+  }
+
+  .settings-card__row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .verify-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .profile-hero__body {
+    padding-inline: var(--space-4);
+  }
+
+  .profile-hero__avatar {
+    margin-left: var(--space-4);
+  }
+
+  .people-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-2);
+  }
+
+  .people-card {
+    padding: var(--space-4) var(--space-3);
+  }
+
+  .people-card__bio {
+    display: none;
+  }
+
+  .composer__tools .icon-btn:last-child {
+    display: none;
+  }
+
+  .emoji-pop {
+    width: 240px;
+    grid-template-columns: repeat(6, 1fr);
+  }
+
+  .toast-region {
+    bottom: calc(74px + env(safe-area-inset-bottom));
+  }
+
+  .details__hero {
+    gap: var(--space-3);
+  }
+}
+
+@media (max-width: 400px) {
+  .people-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .msg__meta {
+    font-size: 9px;
+  }
+}
+
+/* ---- Landscape phones: keep the composer usable ---- */
+@media (max-height: 520px) and (orientation: landscape) {
+  .composer-wrap {
+    padding-block: 6px;
+  }
+
+  .chat-header {
+    min-height: 48px;
+  }
+
+  .emoji-pop {
+    max-height: 120px;
+    overflow-y: auto;
+  }
+}
+
+/* ---- Print: hide chrome ---- */
+@media print {
+  .nav-rail,
+  .bottom-bar,
+  .composer-wrap,
+  .chat-header__actions,
+  .ambient {
+    display: none !important;
+  }
+
+  .app-shell,
+  .workspace,
+  .chat-window {
+    height: auto;
+    overflow: visible;
+  }
+}

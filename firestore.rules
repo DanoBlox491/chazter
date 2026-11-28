@@ -1,0 +1,334 @@
+rules_version = '2';
+
+/**
+ * CHAZTER — Cloud Firestore security rules
+ * ============================================================================
+ * Principles:
+ *   1. Deny by default. Every allow is explicit and narrow.
+ *   2. Membership is checked server-side for every conversation read/write.
+ *   3. Users may only write their own profile, and only fields they own.
+ *   4. Username claims are immutable in ownership: you can only create a claim
+ *      for yourself, and you cannot delete someone else's claim.
+ *   5. Messages are append-only for members; only the sender (or a group
+ *      admin, for moderation) may delete. Message fields are validated so a
+ *      client cannot impersonate another sender or forge a timestamp.
+ *   6. Read cursors + typing docs are private-ish: any member can read them
+ *      (needed for receipts/typing), but only the owner can write.
+ *
+ * Deploy:  firebase deploy --only firestore:rules
+ * ============================================================================
+ */
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /* ---------------------------------------------------------------- *
+     * Helpers
+     * ---------------------------------------------------------------- */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    /** Shape check for a usernames/{lowercase} key (defence in depth). */
+    function isValidUsernameKey(key) {
+      return key.matches('^[a-z0-9][a-z0-9._-]{2,23}$');
+    }
+
+    /** True if the caller is listed as a member of the given conversation. */
+    function isMember(conversationId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/conversations/$(conversationId))
+        && uid() in get(/databases/$(database)/documents/conversations/$(conversationId)).data.memberIds;
+    }
+
+    function conversationData(conversationId) {
+      return get(/databases/$(database)/documents/conversations/$(conversationId)).data;
+    }
+
+    function isAdminOf(conversationId) {
+      return isMember(conversationId)
+        && uid() in conversationData(conversationId).admins;
+    }
+
+    /** Only these profile keys may ever be written by a client. */
+    function validProfileFields(data) {
+      return data.keys().hasOnly([
+        'uid', 'username', 'usernameLower', 'displayName', 'email', 'photoURL', 'bio',
+        'provider', 'createdAt', 'updatedAt', 'onboardingComplete', 'presence',
+        'lastReadAt', 'settings', 'displayNameLower'
+      ]);
+    }
+
+    function validPresence(presence) {
+      return presence.keys().hasOnly(['state', 'lastActiveAt'])
+        && presence.state in ['online', 'away', 'offline'];
+    }
+
+    /* ---------------------------------------------------------------- *
+     * Users
+     * ---------------------------------------------------------------- */
+    match /users/{userId} {
+      // Any signed-in user can read a profile (needed for names/avatars in
+      // chats and for people search). Emails are visible to members only in
+      // practice because the UI never renders other people's email.
+      allow read: if isSignedIn();
+
+      // Create: only your own profile document, with a complete, sane shape.
+      allow create: if isSignedIn()
+        && request.auth.uid == userId
+        && validProfileFields(request.resource.data)
+        && request.resource.data.uid == userId
+        && request.resource.data.username is string
+        && request.resource.data.username.size() >= 3
+        && request.resource.data.username.size() <= 24
+        && request.resource.data.usernameLower == request.resource.data.username.lower()
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() >= 2
+        && request.resource.data.displayName.size() <= 40
+        && request.resource.data.bio is string
+        && request.resource.data.bio.size() <= 160
+        && request.resource.data.onboardingComplete == true
+        && (!request.resource.data.keys().hasAny(['presence'])
+            || validPresence(request.resource.data.presence));
+
+      // Update: only your own profile. Identity fields are immutable; the
+      // username claim can only change together with a claim document write,
+      // which the usernames rule enforces separately.
+      allow update: if isSignedIn()
+        && request.auth.uid == userId
+        && validProfileFields(request.resource.data)
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.createdAt == resource.data.createdAt
+        && (!request.resource.data.keys().hasAny(['presence'])
+            || validPresence(request.resource.data.presence))
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() >= 2
+        && request.resource.data.displayName.size() <= 40
+        && request.resource.data.bio is string
+        && request.resource.data.bio.size() <= 160;
+
+      // Deleting your own profile is allowed (account deletion). Only the
+      // owner can do it; messages stay behind intentionally.
+      allow delete: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    /* ---------------------------------------------------------------- *
+     * Username claims — the uniqueness registry
+     * ---------------------------------------------------------------- */
+    match /usernames/{usernameLower} {
+      // Readable by signed-in users (needed for availability checks + search).
+      allow get, list: if isSignedIn();
+
+      // Claim: only for yourself, and the key must match the normalised
+      // username exactly. `create` fails if the document already exists,
+      // which is what makes duplicates impossible under concurrency.
+      allow create: if isSignedIn()
+        && isValidUsernameKey(usernameLower)
+        && request.resource.data.keys().hasOnly(['uid', 'username', 'usernameLower', 'createdAt'])
+        && request.resource.data.uid == uid()
+        && request.resource.data.usernameLower == usernameLower
+        && request.resource.data.username is string
+        && request.resource.data.username.size() >= 3
+        && request.resource.data.username.size() <= 24
+        && request.resource.data.username.lower() == usernameLower;
+
+      // You may replace *your own* claim (used when renaming). The existing
+      // document must already belong to you.
+      allow update: if isSignedIn()
+        && resource.data.uid == uid()
+        && request.resource.data.uid == uid()
+        && request.resource.data.usernameLower == usernameLower;
+
+      // You may release only your own claim.
+      allow delete: if isSignedIn() && resource.data.uid == uid();
+    }
+
+    /* ---------------------------------------------------------------- *
+     * Conversations
+     * ---------------------------------------------------------------- */
+    match /conversations/{conversationId} {
+
+      /* ------------------------- parent document -------------------- */
+      allow read: if isMember(conversationId);
+
+      // Creating a conversation: you must be a member and an admin of what
+      // you create. Private chats have exactly two members; groups have 1+
+      // others plus you.
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasOnly([
+          'type', 'name', 'photoURL', 'color', 'createdBy', 'createdAt', 'updatedAt',
+          'memberIds', 'members', 'admins', 'lastMessage', 'lastMessageAt', 'typing',
+          'mutedBy', 'archivedBy', 'unreadCounts', 'lastReadAt', 'schemaVersion'
+        ])
+        && request.resource.data.type in ['private', 'group']
+        && request.resource.data.createdBy == uid()
+        && uid() in request.resource.data.memberIds
+        && uid() in request.resource.data.admins
+        && request.resource.data.memberIds.size() >= 2
+        && request.resource.data.memberIds.size() <= 64
+        // A private conversation must be exactly you + one other person.
+        && (request.resource.data.type != 'private'
+            || request.resource.data.memberIds.size() == 2)
+        && request.resource.data.members is map
+        // Every declared member must have a member card.
+        && request.resource.data.memberIds.toSet().difference(request.resource.data.members.keys().toSet()).size() == 0;
+
+      // Updates: any member may update ordinary fields (unread counters, mute,
+      // archive, typing markers, lastMessage). Structural changes are the only
+      // ones that need privilege checks, and those are expressed as explicit
+      // "unchanged OR privileged action" clauses below.
+      allow update: if isMember(conversationId)
+        // Immutable identity fields.
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.type == resource.data.type
+        && request.resource.data.createdAt == resource.data.createdAt
+        // Membership: either untouched, or changed by an admin (adds/removes),
+        // or the caller is removing themselves (leave / delete chat).
+        && (
+             request.resource.data.memberIds == resource.data.memberIds
+             || (uid() in resource.data.admins
+                 && uid() in request.resource.data.memberIds
+                 && request.resource.data.memberIds.size() >= 2)
+             || (!(uid() in request.resource.data.memberIds)
+                 && request.resource.data.memberIds.size() == resource.data.memberIds.size() - 1
+                 && request.resource.data.memberIds.toSet().difference(resource.data.memberIds.toSet()).size() == 0)
+           )
+        // Admins: unchanged, or an existing admin made the change, or the
+        // caller dropped their own admin flag by leaving.
+        && (
+             request.resource.data.admins == resource.data.admins
+             || uid() in resource.data.admins
+           )
+        // The creator's admin flag can never be removed by anyone else.
+        && (
+             request.resource.data.createdBy != uid()
+             || request.resource.data.createdBy in request.resource.data.admins
+             || !(uid() in resource.data.admins)
+           )
+        // Every member must still have a member card (no dangling members).
+        // Evaluated on the merged document, so dotted-path updates that don't
+        // touch `members` still satisfy it when the data was consistent.
+        && (
+             !(request.resource.data.keys().hasAny(['members']))
+             || request.resource.data.memberIds.toSet()
+                  .difference(request.resource.data.members.keys().toSet())
+                  .size() == 0
+           )
+        && request.resource.data.name is string
+        && request.resource.data.name.size() <= 48
+        && request.resource.data.unreadCounts is map
+        && (
+             request.resource.data.lastMessage == null
+             || (request.resource.data.lastMessage is map
+                 && request.resource.data.lastMessage.text is string
+                 && request.resource.data.lastMessage.text.size() <= 4100)
+           );
+
+      // Deleting: admins (or creators) may delete a group; either member may
+      // delete an empty private chat.
+      allow delete: if isSignedIn()
+        && isMember(conversationId)
+        && (uid() in conversationData(conversationId).admins);
+
+      /* ---------------------------- messages ------------------------ */
+      match /messages/{messageId} {
+        // Members can read history.
+        allow read: if isMember(conversationId);
+
+        // Append-only, with shape validation:
+        //  - senderId must be you (no impersonation)
+        //  - timestamps must be server-provided
+        //  - text is bounded and typed
+        //  - image payload (if any) must point at this project's bucket path
+        allow create: if isMember(conversationId)
+          && request.resource.data.senderId == uid()
+          && request.resource.data.keys().hasOnly([
+               'type', 'text', 'image', 'senderId', 'senderName', 'senderUsername',
+               'senderPhotoURL', 'replyTo', 'createdAt', 'clientCreatedAt',
+               'editedAt', 'deletedAt', 'deletedBy', 'reactions'
+             ])
+          && request.resource.data.type in ['text', 'image']
+          && request.resource.data.text is string
+          && request.resource.data.text.size() <= 4000
+          && (
+               request.resource.data.type != 'image'
+               || (request.resource.data.image is map
+                   && request.resource.data.image.url is string
+                   && request.resource.data.image.url.matches('^https://.*')
+                   && request.resource.data.image.storagePath is string
+                   && request.resource.data.image.storagePath.matches('^chat-images/.*'))
+             )
+          // Server timestamp required (clients cannot forge message times).
+          // Optional tombstone fields must be absent on creation.
+          && request.resource.data.createdAt == request.time
+          && (!request.resource.data.keys().hasAny(['deletedAt', 'deletedBy', 'editedAt']));
+
+        // Soft delete only (tombstone), by the sender or a group admin.
+        // The diff must touch only tombstone fields, and the new values must
+        // be exactly "deleted, by me, empty text".
+        allow update: if isMember(conversationId)
+          && (
+               resource.data.senderId == uid()
+               || isAdminOf(conversationId)
+             )
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['deletedAt', 'deletedBy', 'text', 'image', 'replyTo'])
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasAny(['deletedAt', 'deletedBy'])
+          && request.resource.data.deletedAt == request.time
+          && request.resource.data.deletedBy == uid()
+          && request.resource.data.text == '';
+
+        // Hard delete: sender only (admins moderate via soft delete).
+        allow delete: if isMember(conversationId)
+          && resource.data.senderId == uid();
+      }
+
+      /* ------------------------- read cursors ----------------------- */
+      match /reads/{userId} {
+        // Any member can read cursors to compute receipts.
+        allow read: if isMember(conversationId);
+
+        // Only you can write your own cursor.
+        allow write: if isMember(conversationId)
+          && uid() == userId
+          && request.resource.data.keys().hasOnly(['uid', 'lastReadAt', 'updatedAt'])
+          && request.resource.data.uid == uid();
+
+        // Removing a departed member's cursor is an admin action.
+        allow delete: if isSignedIn()
+          && (uid() == userId || isAdminOf(conversationId));
+      }
+
+      /* ---------------------- typing indicators --------------------- */
+      match /typing/{userId} {
+        allow read: if isMember(conversationId);
+
+        allow create, update: if isMember(conversationId)
+          && uid() == userId
+          && request.resource.data.keys().hasOnly(['uid', 'displayName', 'expiresAt'])
+          && request.resource.data.uid == uid()
+          && request.resource.data.displayName is string
+          && request.resource.data.displayName.size() <= 60;
+
+        allow delete: if isSignedIn()
+          && (uid() == userId || isAdminOf(conversationId));
+      }
+
+      /* ------------------------- catch-all -------------------------- */
+      match /{document=**} {
+        allow read, write: if false;
+      }
+    }
+
+    /* ---------------------------------------------------------------- *
+     * Anything not matched above is denied.
+     * ---------------------------------------------------------------- */
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

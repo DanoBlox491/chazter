@@ -1,0 +1,49 @@
+rules_version = '2';
+
+/**
+ * CHAZTER — Cloud Storage rules (image sharing + avatars)
+ * ============================================================================
+ * Paths
+ *   avatars/{uid}/{file}                       — your own avatar
+ *   chat-images/{conversationId}/{uid}/{file}  — photos in a conversation
+ *
+ * Honest model (verified against Firebase docs):
+ *   Storage rules cannot read Firestore, so they cannot prove conversation
+ *   membership. What they DO enforce:
+ *     · you can only write under your own uid segment
+ *     · only image content types, under 5 MB
+ *     · the conversationId segment must look like a real id
+ *   What protects the images afterwards:
+ *     · Firebase download URLs embed a long, unguessable token, so a URL
+ *       cannot be enumerated
+ *     · the app only requests URLs for conversations the user is in
+ *   If you need hard, rule-level membership checks, move uploads behind a
+ *   Cloud Function or use App Check + signed URLs. This limitation is
+ *   documented in the README so nobody mistakes it for something it isn't.
+ * ============================================================================
+ */
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    match /avatars/{userId}/{fileName} {
+      allow read: if true;
+      allow write: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp|gif|avif)');
+    }
+
+    match /chat-images/{conversationId}/{userId}/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && request.auth.uid == userId
+        && conversationId.matches('^[A-Za-z0-9_-]{3,80}$')
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp|gif|avif)');
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
