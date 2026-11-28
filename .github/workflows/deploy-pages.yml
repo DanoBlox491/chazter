@@ -40,6 +40,14 @@ jobs:
           VITE_FIREBASE_MEASUREMENT_ID: ${{ vars.VITE_FIREBASE_MEASUREMENT_ID }}
         run: npm run build
 
+      # The update checker compares the running bundle against this file.
+      # If it ever stops being emitted, every tab silently reports "up to
+      # date" — a failure that looks like nothing at all.
+      - name: Verify release manifest exists
+        run: |
+          test -f dist/release.json || { echo "::error::dist/release.json missing - the update checker cannot work"; exit 1; }
+          python3 -c "import json;d=json.load(open('dist/release.json'));assert d['buildId'] and d['buildId']!='dev', d; print('build', d['buildId'], 'v'+d['version'])"
+
       - name: SPA fallback (404.html)
         run: cp dist/index.html dist/404.html
 
