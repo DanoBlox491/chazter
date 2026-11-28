@@ -14,7 +14,14 @@ export default [
     files: ['**/*.{js,jsx}'],
     languageOptions: {
       ecmaVersion: 2024,
-      globals: { ...globals.browser, ...globals.node },
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+        // Injected by Vite's `define` at build time and in the test runner
+        // (see vite.config.js). Declared here so lint sees a real global
+        // rather than an undefined identifier.
+        __BUILD_INFO__: 'readonly',
+      },
       parserOptions: {
         ecmaFeatures: { jsx: true },
         sourceType: 'module',

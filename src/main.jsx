@@ -10,7 +10,13 @@ import './styles/landing.css';
 import './styles/app.css';
 import './styles/chat.css';
 import './styles/responsive.css';
+import './styles/performance.css';
+import { hydratePreferences } from './lib/preferences.js';
 import { App } from './App.jsx';
+
+// Apply saved device preferences (motion, latency, GPU effects, ambient
+// background) before the first render so there is no flash of full effects.
+hydratePreferences();
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

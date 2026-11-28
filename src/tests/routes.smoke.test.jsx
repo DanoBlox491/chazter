@@ -157,7 +157,21 @@ beforeEach(() => {
   fixture.receipts = {};
 });
 
-const ROUTES = ['/app', '/app/people', '/app/settings/profile', '/app/settings/appearance', '/app/settings/account', '/app/c/does-not-exist', '/welcome', '/signin', '/signup', '/forgot-password', '/404'];
+const ROUTES = [
+  '/app',
+  '/app/people',
+  '/app/settings/profile',
+  '/app/settings/appearance',
+  '/app/settings/performance',
+  '/app/settings/account',
+  '/app/settings/about',
+  '/app/c/does-not-exist',
+  '/welcome',
+  '/signin',
+  '/signup',
+  '/forgot-password',
+  '/404',
+];
 
 describe.each(ROUTES)('route %s', (route) => {
   it('mounts without hitting the error boundary', async () => {

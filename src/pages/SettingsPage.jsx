@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
   AtSign,
@@ -12,6 +12,8 @@ import {
   Moon,
   ShieldCheck,
   Sun,
+  Gauge,
+  Info,
   Trash2,
   UserRound,
 } from 'lucide-react';
@@ -45,18 +47,31 @@ import {
 import { errorMessage } from '../lib/utils/errors.js';
 import { formatMonthYear } from '../lib/utils/time.js';
 import { cx } from '../lib/utils/general.js';
+import { usePreferences } from '../lib/preferences.js';
+import { PerformanceSettings } from '../components/settings/PerformanceSettings.jsx';
+import { AboutSettings } from '../components/settings/AboutSettings.jsx';
 
 const TABS = [
   { id: 'profile', label: 'Profile', icon: UserRound },
   { id: 'appearance', label: 'Appearance', icon: Sun },
+  { id: 'performance', label: 'Performance', icon: Gauge },
   { id: 'account', label: 'Account & security', icon: ShieldCheck },
+  { id: 'about', label: 'About', icon: Info },
 ];
 
 /** Settings — profile editing, theme and account/security controls. */
 export default function SettingsPage() {
   const { user, signOutUser, replaceProfile } = useAuth();
-  const [tab, setTab] = useState('profile');
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requested = searchParams.get('tab');
+  const tab = TABS.some((entry) => entry.id === requested) ? requested : 'profile';
+
+  const setTab = (next) => {
+    // The tab lives in the URL so "About this build" can deep-link to it and
+    // a refresh lands you back where you were.
+    setSearchParams(next === 'profile' ? {} : { tab: next }, { replace: true });
+  };
 
   useEffect(() => {
     document.title = 'Settings · Chazter';
@@ -101,7 +116,9 @@ export default function SettingsPage() {
         <div className="settings__content page-fade">
           {tab === 'profile' ? <ProfileSettings user={user} replaceProfile={replaceProfile} /> : null}
           {tab === 'appearance' ? <AppearanceSettings /> : null}
+          {tab === 'performance' ? <PerformanceSettings /> : null}
           {tab === 'account' ? <AccountSettings user={user} /> : null}
+          {tab === 'about' ? <AboutSettings /> : null}
         </div>
       </div>
     </div>
@@ -319,6 +336,7 @@ function ProfileSettings({ user, replaceProfile }) {
  * ------------------------------------------------------------------ */
 function AppearanceSettings() {
   const { preference, resolved, setTheme } = useTheme();
+  const prefs = usePreferences();
   return (
     <section className="settings-panel">
       <header className="settings-panel__head">
@@ -358,14 +376,21 @@ function AppearanceSettings() {
         device appearance as it changes through the day.
       </p>
 
-      <SectionHeader title="Message preferences" />
+      <SectionHeader title="Motion" />
       <Switch
-        id="pref-compact"
+        id="pref-reduce-motion"
         label="Reduce motion"
         description="Turn off decorative animations and transitions across the app."
-        checked={false}
-        onChange={() => {}}
+        checked={prefs.reduceMotion}
+        onChange={(value) => prefs.set({ reduceMotion: value })}
       />
+      <p className="settings-panel__note">
+        Performance, launch and GPU options live in{' '}
+        <Link className="link-btn" to="/app/settings?tab=performance">
+          Performance
+        </Link>
+        .
+      </p>
     </section>
   );
 }

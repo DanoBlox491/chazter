@@ -1,0 +1,118 @@
+/**
+ * DEVICE PERFORMANCE & MOTION
+ * ==========================================================================
+ * These rules are the whole point of the performance settings: each block is
+ * triggered by an attribute that `src/lib/preferences.js` writes on <html>,
+ * so what the switches promise is exactly what the browser does.
+ *
+ * Why attribute selectors rather than a class on a wrapper: <html> is the only
+ * element guaranteed to exist before React mounts, which means the choice
+ * applies from the very first frame (no flash of blur/animations on load).
+ * ==========================================================================
+ */
+
+/* ------------------------------------------------------------------ *
+ * Reduce motion
+ * ------------------------------------------------------------------ *
+ * Also honours the OS setting. `!important` is deliberate and scoped: this is
+ * an accessibility override, and it must beat component-level transitions
+ * regardless of specificity.
+ */
+html[data-motion='reduced'] *,
+html[data-motion='reduced'] *::before,
+html[data-motion='reduced'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  transition-delay: 0ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* Decorative loops are worse than useless without motion — they are noise. */
+html[data-motion='reduced'] .ambient,
+html[data-motion='reduced'] .nav-rail__action-icon::after {
+  display: none !important;
+}
+
+/* ------------------------------------------------------------------ *
+ * Low latency
+ * ------------------------------------------------------------------ *
+ * Blur is the single most expensive thing a chat UI can ask a GPU to do:
+ * every scroll frame re-rasterises the blurred backdrop beneath it, and on a
+ * mid-range phone that is the difference between 60fps and 40fps. Shadows are
+ * second. Both are pure decoration, so dropping them costs nothing but looks
+ * slightly flatter.
+ */
+html[data-latency='low'] .ambient {
+  display: none !important;
+}
+
+html[data-latency='low'] *,
+html[data-latency='low'] *::before,
+html[data-latency='low'] *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  filter: none !important;
+}
+
+/* Keep the scrim readable once its blur is gone. */
+html[data-latency='low'] .modal__scrim {
+  background: var(--bg-scrim, rgba(0, 0, 0, 0.55));
+}
+
+/* Flat surfaces need a visible edge to stay legible. */
+html[data-latency='low'] .card,
+html[data-latency='low'] .settings-card,
+html[data-latency='low'] .modal__panel,
+html[data-latency='low'] .account-menu {
+  border-color: var(--surface-border-strong);
+}
+
+html[data-latency='low'] * {
+  transition-duration: 80ms !important;
+  animation-duration: 160ms !important;
+}
+
+/* ------------------------------------------------------------------ *
+ * Hardware acceleration off
+ * ------------------------------------------------------------------ *
+ * This is the real escape hatch for the classic symptom "the page flickers,
+ * tears, or goes black while scrolling" — usually a driver compositing bug
+ * with `transform: translateZ(0)` / `will-change` / 3D transforms. Turning
+ * those off forces the software rasteriser, which is slower but stable.
+ */
+html[data-hwaccel='off'] *,
+html[data-hwaccel='off'] *::before,
+html[data-hwaccel='off'] *::after {
+  will-change: auto !important;
+  backface-visibility: visible !important;
+  transform-style: flat !important;
+}
+
+html[data-hwaccel='off'] .msg,
+html[data-hwaccel='off'] .modal__panel,
+html[data-hwaccel='off'] .account-menu,
+html[data-hwaccel='off'] .toast {
+  transform: none !important;
+}
+
+html[data-hwaccel='off'] .chat-scroll,
+html[data-hwaccel='off'] body {
+  overflow-anchor: auto;
+}
+
+/* ------------------------------------------------------------------ *
+ * Ambient background off
+ * ------------------------------------------------------------------ */
+html[data-ambient='off'] .ambient {
+  display: none !important;
+}
+
+/* ------------------------------------------------------------------ *
+ * Smooth-scroll only when motion is welcome
+ * ------------------------------------------------------------------ */
+html[data-motion='reduced'] {
+  scroll-behavior: auto;
+}
