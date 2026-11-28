@@ -101,7 +101,7 @@ parchment light theme, Fraunces for display type and Inter for the interface.
 - **Cloud Firestore** — real-time data, offline persistence, security rules
 - **Firebase Storage** — avatars and chat images
 - **React Router 7** — nested routes and protected layouts
-- **Vitest + Testing Library** — 130 tests across logic, rules contracts,
+- **Vitest + Testing Library** — 132 tests across logic, rules contracts,
   rendering and accessibility
 - **CSS** — hand-written design tokens, no UI framework
 
