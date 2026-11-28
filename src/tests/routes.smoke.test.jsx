@@ -78,6 +78,35 @@ vi.mock('../lib/services/conversationService.js', () => {
   };
 });
 
+vi.mock('../lib/services/serverService.js', () => ({
+  subscribeServers: (_uid, onData) => {
+    onData([]);
+    return noopUnsub;
+  },
+  subscribeChannels: (_serverId, _uid, onData) => {
+    onData([]);
+    return noopUnsub;
+  },
+  subscribeServer: (_id, onData) => {
+    onData(null);
+    return noopUnsub;
+  },
+  getServer: () => Promise.resolve(null),
+  getServerMembership: () => Promise.resolve(null),
+  getInvite: () => Promise.resolve(null),
+  joinViaInvite: vi.fn(),
+  canManage: () => false,
+  createServer: vi.fn(),
+  createChannel: vi.fn(),
+  createInvite: vi.fn(),
+  listInvites: () => Promise.resolve([]),
+  revokeInvite: vi.fn(),
+  inviteUrl: (code) => `https://example.test/join/${code}`,
+  validateServerName: () => '',
+  validateChannelName: () => '',
+  normaliseChannelName: (name) => String(name).toLowerCase(),
+}));
+
 vi.mock('../lib/services/messageService.js', () => ({
   subscribeMessages: (_id, handlers) => {
     handlers.onData(fixture.messages, { hasMore: false });
@@ -165,6 +194,9 @@ const ROUTES = [
   '/app/settings/performance',
   '/app/settings/account',
   '/app/settings/about',
+  '/app/servers',
+  '/app/s/does-not-exist',
+  '/join/abcdefghjk',
   '/app/c/does-not-exist',
   '/welcome',
   '/signin',

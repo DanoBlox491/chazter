@@ -17,6 +17,8 @@ const ChatWorkspace = lazy(() =>
 const SettingsPage = lazy(() => import('../pages/SettingsPage.jsx'));
 const ProfilePage = lazy(() => import('../pages/ProfilePage.jsx'));
 const NotFoundPage = lazy(() => import('../pages/NotFoundPage.jsx'));
+const ServerWorkspace = lazy(() => import('../pages/ServerWorkspace.jsx'));
+const JoinPage = lazy(() => import('../pages/JoinPage.jsx'));
 
 /** Route table for the whole product. */
 export function AppRoutes() {
@@ -35,12 +37,20 @@ export function AppRoutes() {
           <Route path="/welcome" element={<WelcomePage />} />
         </Route>
 
+        {/* Invite links: reachable signed out (the join screen explains what
+            the link is for) and resolved fully once signed in. */}
+        <Route path="/join/:code" element={<JoinPage />} />
+
         <Route element={<GuardedRoute />}>
           <Route path="/app" element={<AppShell />}>
             <Route index element={<ChatWorkspace />} />
             <Route path="c/:conversationId" element={<ChatWorkspace />} />
             <Route path="people" element={<ChatWorkspace />} />
             <Route path="u/:username" element={<ProfilePage />} />
+            <Route path="s/:serverId" element={<ServerWorkspace />} />
+            <Route path="s/:serverId/c/:channelId" element={<ServerWorkspace />} />
+            <Route path="s/:serverId/settings" element={<ServerWorkspace />} />
+            <Route path="servers" element={<ServerWorkspace />} />
             <Route path="settings/*" element={<SettingsPage />} />
           </Route>
         </Route>

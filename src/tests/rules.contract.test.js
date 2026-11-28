@@ -247,3 +247,123 @@ describe('profile document completeness', () => {
     expect(extra, `keys not allowlisted: ${extra.join(', ')}`).toEqual([]);
   });
 });
+
+/* ==================================================================== *
+ * Servers, channels and invites
+ * --------------------------------------------------------------------
+ * These assertions are written against the *bug that nearly shipped*: the
+ * first draft of the join rule contained `(isServerMember(serverId) || true)`,
+ * a tautology that let any signed-in user join any server whose id they knew.
+ * A rules review that only checks "does it look restrictive" would pass it;
+ * these tests fail it.
+ * ==================================================================== */
+describe('server rules', () => {
+  const serversBlock = rules.slice(
+    rules.indexOf('match /servers/{serverId}'),
+    rules.indexOf('match /invites/{code} { allow get'),
+  );
+
+  it('never contains a tautological allow', () => {
+    // The exact shape of the bug: `... || true )` inside a condition.
+    // The bug was a bare boolean literal as a disjunct: `(... || true)`.
+    // `x == true` is a legitimate comparison and must not trip this.
+    expect(rules).not.toMatch(/\|\|\s*true\s*\)/);
+    expect(rules).not.toMatch(/\(\s*true\s*\|\|/);
+  });
+
+  it('gates a self-join on a usable invite, not just on knowing the server id', () => {
+    const membersStart = serversBlock.indexOf('match /members/{memberId}');
+    const memberCreate = serversBlock.slice(
+      membersStart,
+      serversBlock.indexOf('allow update:', membersStart),
+    );
+    expect(memberCreate).toMatch(/isUsableServerInvite\(/);
+    // The invite code must come from the write itself, so it cannot be faked.
+    expect(memberCreate).toMatch(/request\.resource\.data\.inviteCode/);
+  });
+
+  it('forces a self-join to be a plain member (no privilege escalation)', () => {
+    expect(serversBlock).toMatch(/request\.resource\.data\.role == 'member'/);
+    expect(serversBlock).not.toMatch(/allow create:[^;]*role == 'admin'/);
+  });
+
+  it('checks the invite was not revoked and targets this exact server', () => {
+    const helper = rules.slice(
+      rules.indexOf('function isUsableServerInvite'),
+      rules.indexOf('function adminRemovesMember'),
+    );
+    expect(helper).toMatch(/\.data\.revoked == false/);
+    expect(helper).toMatch(/\.data\.targetId == serverId/);
+    expect(helper).toMatch(/\.data\.type == 'server'/);
+  });
+
+  it('guards missing member documents instead of erroring on .data', () => {
+    // NOTE: isServerAdmin is declared in the top-level helper section, which
+    // sits before `match /servers`, not inside it.
+    const adminStart = rules.indexOf('function isServerAdmin');
+    expect(adminStart, 'isServerAdmin helper missing').toBeGreaterThan(-1);
+    const adminHelper = rules.slice(
+      adminStart,
+      rules.indexOf('function adminRemovesMember', adminStart),
+    );
+    expect(adminHelper).toMatch(/serverMemberExists\(serverId\)/);
+    expect(adminHelper).toMatch(/serverMemberExists\(serverId\)/);
+  });
+
+  it('only lets the owner delete a server', () => {
+    expect(serversBlock).toMatch(/allow delete:[^;]*resource\.data\.ownerId == uid\(\)/s);
+  });
+
+  it('stops an owner being removed from a server', () => {
+    expect(serversBlock).toMatch(/\.data\.role != 'owner'/);
+  });
+});
+
+describe('invite rules', () => {
+  const invitesStart = rules.indexOf('match /invites/{code} {');
+  expect(invitesStart, 'top-level invites block missing').toBeGreaterThan(-1);
+  const invitesBlock = rules.slice(invitesStart);
+
+  it('mints invites with no expiry', () => {
+    expect(invitesBlock).toMatch(/request\.resource\.data\.expiresAt == null/);
+  });
+
+  it('requires admin rights over the invite target', () => {
+    expect(invitesBlock).toMatch(/isServerAdmin\(request\.resource\.data\.targetId\)/);
+    expect(invitesBlock).toMatch(/\.data\.admins/);
+  });
+
+  it('makes revocation terminal', () => {
+    const update = invitesBlock.slice(invitesBlock.indexOf('allow update'));
+    // A revoked invite must never be flipped back to live.
+    expect(update).toMatch(/resource\.data\.revoked == false\s*&&\s*request\.resource\.data\.revoked == true/s);
+    // and only the creator may revoke
+    expect(update).toMatch(/resource\.data\.createdBy == uid\(\)/);
+  });
+
+  it('lets anyone signed in resolve a code, which is what makes a link work', () => {
+    expect(invitesBlock).toMatch(/allow get: if isSignedIn\(\);/);
+  });
+});
+
+describe('channel membership rules', () => {
+  const update = rules.slice(
+    rules.indexOf('allow update: if isMember(conversationId)'),
+    rules.indexOf('/* ---------------------------- messages'),
+  );
+
+  it('lets a joining member add only themselves to a channel', () => {
+    expect(update).toMatch(/request\.resource\.data\.type == 'channel'/);
+    expect(update).toMatch(/\.union\(\[uid\(\)\]\.toSet\(\)\)/);
+  });
+
+  it('requires a valid server invite for that self-add', () => {
+    expect(update).toMatch(/isUsableServerInvite\(/);
+  });
+
+  it('keeps channel renames and serverId changes admin-only', () => {
+    // A plain member changing the name is rejected unless they are an admin.
+    expect(update).toMatch(/request\.resource\.data\.name == resource\.data\.name/);
+    expect(update).toMatch(/isServerAdmin\(resource\.data\.serverId\)/);
+  });
+});

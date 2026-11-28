@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Bell,
+  Link2,
   Crown,
   LogOut,
   MessageSquarePlus,
@@ -17,6 +18,7 @@ import { Avatar } from '../ui/Avatar.jsx';
 import { Button } from '../ui/Button.jsx';
 import { Switch, SectionHeader } from '../ui/Misc.jsx';
 import { AddMembersDialog } from './AddMembersDialog.jsx';
+import { InviteDialog } from '../servers/InviteDialog.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import { conversationDisplay } from '../../lib/utils/conversationDisplay.js';
@@ -29,7 +31,7 @@ import {
   updateGroupInfo,
   startPrivateConversation,
 } from '../../lib/services/conversationService.js';
-import { CONVERSATION_TYPES } from '../../lib/services/models.js';
+import { CONVERSATION_TYPES, INVITE_TYPES } from '../../lib/services/models.js';
 import { isUserOnline } from '../../lib/services/presence.js';
 import { errorMessage } from '../../lib/utils/errors.js';
 import { cx } from '../../lib/utils/general.js';
@@ -53,6 +55,7 @@ export function ConversationDetails({ open, onClose, conversation, uid }) {
   const isGroup = conversation?.type === CONVERSATION_TYPES.group;
   const display = conversationDisplay(conversation, uid);
   const isAdmin = Boolean(conversation?.isAdmin);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const members = useMemo(() => {
     return Object.entries(conversation?.members || {})
       .map(([memberId, value]) => ({
@@ -298,12 +301,20 @@ export function ConversationDetails({ open, onClose, conversation, uid }) {
                 ))}
               </ul>
               {isAdmin ? (
-                <button type="button" className="details__add-row" onClick={() => setAddOpen(true)}>
-                  <span className="details__add-icon">
-                    <UserPlus size={16} />
-                  </span>
-                  Add people to this group
-                </button>
+                <>
+                  <button type="button" className="details__add-row" onClick={() => setAddOpen(true)}>
+                    <span className="details__add-icon">
+                      <UserPlus size={16} />
+                    </span>
+                    Add people to this group
+                  </button>
+                  <button type="button" className="details__add-row" onClick={() => setInviteOpen(true)}>
+                    <span className="details__add-icon">
+                      <Link2 size={16} />
+                    </span>
+                    Create an invite link
+                  </button>
+                </>
               ) : null}
             </div>
           ) : (
@@ -335,6 +346,15 @@ export function ConversationDetails({ open, onClose, conversation, uid }) {
           </div>
         </div>
       </Modal>
+
+      <InviteDialog
+        open={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+        type={INVITE_TYPES.group}
+        targetId={conversation?.id}
+        targetName={conversation?.name || 'this group'}
+        canCreate={isAdmin}
+      />
 
       <AddMembersDialog
         open={addOpen}

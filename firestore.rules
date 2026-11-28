@@ -62,6 +62,35 @@ service cloud.firestore {
       ]);
     }
 
+    /** True when the new member list is exactly the old one plus the caller. */
+    function clientAddsOnlySelf(before, after) {
+      return after.toSet() == before.toSet().union([uid()].toSet())
+        && after.size() == before.size() + 1;
+    }
+
+    /**
+     * A usable server invite: exists, not revoked, not expired (always null by
+     * design), and aimed at this server. The invite document is the bearer
+     * token that authorises a join.
+     */
+    function isUsableServerInvite(code, serverId) {
+      return isSignedIn()
+        && code is string
+        && code.size() >= 8
+        && exists(/databases/$(database)/documents/invites/$(code))
+        && get(/databases/$(database)/documents/invites/$(code)).data.targetId == serverId
+        && get(/databases/$(database)/documents/invites/$(code)).data.type == 'server'
+        && get(/databases/$(database)/documents/invites/$(code)).data.revoked == false;
+    }
+
+    /** An admin removing someone else, never the owner. */
+    function adminRemovesMember(serverId, memberId) {
+      return isServerAdmin(serverId)
+        && memberId != uid()
+        && exists(/databases/$(database)/documents/servers/$(serverId)/members/$(memberId))
+        && get(/databases/$(database)/documents/servers/$(serverId)/members/$(memberId)).data.role != 'owner';
+    }
+
     function validPresence(presence) {
       return presence.keys().hasOnly(['state', 'lastActiveAt'])
         && presence.state in ['online', 'away', 'offline'];
@@ -146,6 +175,200 @@ service cloud.firestore {
       allow delete: if isSignedIn() && resource.data.uid == uid();
     }
 
+
+    /* ---------------------------------------------------------------- *
+     * Servers — communities with named channels
+     * ---------------------------------------------------------------- *
+     * A server's membership list is the source of truth for access. Channel
+     * membership is denormalised for query efficiency, but it is only ever
+     * granted by an admin (or by joining through a valid invite).
+     */
+    function serverData(serverId) {
+      return get(/databases/$(database)/documents/servers/$(serverId)).data;
+    }
+
+    function isServerMember(serverId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/servers/$(serverId))
+        && uid() in serverData(serverId).memberIds;
+    }
+
+    function serverMemberExists(serverId) {
+      return exists(/databases/$(database)/documents/servers/$(serverId)/members/$(uid()));
+    }
+
+    function serverRole(serverId) {
+      return get(/databases/$(database)/documents/servers/$(serverId)/members/$(uid())).data.role;
+    }
+
+    function isServerAdmin(serverId) {
+      // The `exists` guard matters: calling `.data` on a missing document
+      // makes the whole rule evaluation error, and an error is not the same
+      // as a clean deny - it can surface as an opaque failure to the client.
+      return isServerMember(serverId)
+        && serverMemberExists(serverId)
+        && serverRole(serverId) in ['owner', 'admin'];
+    }
+
+    match /servers/{serverId} {
+      // Only members may see a server. Invite previews deliberately do NOT
+      // expose server data: the join screen shows the name from the invite
+      // document alone, so an invite cannot be used to enumerate a server.
+      //
+      // This reads `resource.data` rather than calling isServerMember(): for a
+      // list query, a `get()` on the document being listed is both redundant
+      // and a per-document billed read. `memberIds` is exactly what the
+      // inbox query filters on, so Firestore can prove the query is safe.
+      allow read: if isSignedIn() && uid() in resource.data.memberIds;
+
+      // Create: you are the owner and the sole initial member.
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasOnly([
+          'name', 'ownerId', 'createdAt', 'updatedAt', 'channelIds', 'memberCount',
+          'iconURL', 'schemaVersion', 'owner', 'memberIds'
+        ])
+        && request.resource.data.ownerId == uid()
+        && uid() in request.resource.data.memberIds
+        && request.resource.data.memberIds.size() == 1
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 1
+        && request.resource.data.name.size() <= 48
+        && request.resource.data.memberCount == 1;
+
+      // Update: admins may rename / add channels. Anyone joining through an
+      // invite may append only themselves (checked below).
+      allow update: if isSignedIn()
+        && (
+          // Admin path: rename, channel bookkeeping, icon.
+          (isServerAdmin(serverId)
+            && request.resource.data.ownerId == resource.data.ownerId
+            && request.resource.data.name is string
+            && request.resource.data.name.size() <= 48)
+          ||
+          // Self-join path: the ONLY change is adding the caller to memberIds
+          // and bumping memberCount by one.
+          (
+            clientAddsOnlySelf(resource.data.memberIds, request.resource.data.memberIds)
+            && request.resource.data.ownerId == resource.data.ownerId
+            && request.resource.data.name == resource.data.name
+            && request.resource.data.channelIds == resource.data.channelIds
+            && request.resource.data.memberCount == resource.data.memberCount + 1
+          )
+          ||
+          // Self-leave path: the only change is removing the caller.
+          (
+            request.resource.data.memberIds.toSet()
+              == resource.data.memberIds.toSet().difference([uid()].toSet())
+            && request.resource.data.ownerId != uid()
+            && request.resource.data.name == resource.data.name
+            && request.resource.data.channelIds == resource.data.channelIds
+          )
+        );
+
+      // Deleting a server is the owner's call.
+      allow delete: if isSignedIn()
+        && exists(/databases/$(database)/documents/servers/$(serverId))
+        && resource.data.ownerId == uid();
+
+      /* ------------------------- membership ------------------------- */
+      match /members/{memberId} {
+        allow read: if isServerMember(serverId);
+
+        // Joining: you may add yourself, but ONLY holding a valid, unrevoked
+        // invite that targets this exact server. Without this check any
+        // signed-in user who learned a server id could join it.
+        //
+        // The create is also an escalation guard: a self-join is always
+        // `role == 'member'`, so nobody can write themselves in as an admin.
+        allow create: if isSignedIn()
+          && memberId == uid()
+          && request.resource.data.uid == uid()
+          && request.resource.data.serverId == serverId
+          && request.resource.data.role == 'member'
+          && request.resource.data.keys().hasOnly([
+            'serverId', 'uid', 'role', 'joinedAt', 'displayName', 'username',
+            'photoURL', 'inviteCode'
+          ])
+          && isUsableServerInvite(request.resource.data.inviteCode, serverId);
+
+        // Only admins may change roles. `isServerAdmin` already implies a
+        // signed-in caller; the explicit check makes that legible here and
+        // short-circuits before any document reads.
+        allow update: if isSignedIn()
+          && isServerAdmin(serverId)
+          && request.resource.data.role in ['owner', 'admin', 'member'];
+
+        // Leave, or be removed by an admin. The owner cannot be removed.
+        allow delete: if isSignedIn()
+          && (
+            adminRemovesMember(serverId, memberId)
+            || (memberId == uid() && resource.data.role != 'owner')
+          );
+      }
+
+      /* --------------------------- invites -------------------------- *
+       * Legacy per-server invite records. The real invite registry is the
+       * top-level `invites/{code}` collection (so a link resolves without
+       * knowing its server); this nested block is kept closed: no client
+       * writes, admins may read.
+       */
+      match /invites/{code} {
+        allow read: if isSignedIn() && isServerAdmin(serverId);
+        allow write: if isSignedIn() && isServerAdmin(serverId);
+      }
+    }
+
+    /* ---------------------------------------------------------------- *
+     * Invites — no expiry, revocable
+     * ---------------------------------------------------------------- *
+     * Invites live at the top level so a link can be resolved without first
+     * knowing which server it belongs to. Reading an invite by code is
+     * deliberately open to any signed-in user: that is what makes the link
+     * work. It exposes only the target's name and type, never its contents.
+     */
+    match /invites/{code} {
+      allow get: if isSignedIn();
+
+      // Only owners/admins of the target may mint a link. Group invites check
+      // the conversation's admin list instead of a server role.
+      allow create: if isSignedIn()
+        && code.size() >= 8
+        && code.size() <= 24
+        && request.resource.data.code == code
+        && request.resource.data.createdBy == uid()
+        && request.resource.data.expiresAt == null
+        && request.resource.data.revoked == false
+        && request.resource.data.uses == 0
+        && request.resource.data.type in ['server', 'group']
+        && (
+          (request.resource.data.type == 'server'
+            && isServerAdmin(request.resource.data.targetId))
+          ||
+          (request.resource.data.type == 'group'
+            && uid() in get(/databases/$(database)/documents/conversations/$(request.resource.data.targetId)).data.admins)
+        );
+
+      // `uses` is a courtesy counter, incremented by whoever joins. Nothing
+      // is authorised by it, so a member may touch that one field.
+      // Revocation is the creator's alone, and it is terminal: a revoked
+      // invite can never be un-revoked (nobody can flip `revoked` back).
+      allow update: if isSignedIn()
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.targetId == resource.data.targetId
+        && request.resource.data.type == resource.data.type
+        && (
+          (resource.data.revoked == false
+            && request.resource.data.revoked == false
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['uses']))
+          || (resource.data.createdBy == uid()
+              && resource.data.revoked == false
+              && request.resource.data.revoked == true
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['revoked', 'revokedAt']))
+        );
+
+      allow delete: if isSignedIn() && resource.data.createdBy == uid();
+    }
+
     /* ---------------------------------------------------------------- *
      * Conversations
      * ---------------------------------------------------------------- */
@@ -161,9 +384,10 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly([
           'type', 'name', 'photoURL', 'color', 'createdBy', 'createdAt', 'updatedAt',
           'memberIds', 'members', 'admins', 'lastMessage', 'lastMessageAt', 'typing',
-          'mutedBy', 'archivedBy', 'unreadCounts', 'lastReadAt', 'schemaVersion'
+          'mutedBy', 'archivedBy', 'unreadCounts', 'lastReadAt', 'schemaVersion',
+          'serverId', 'topic'
         ])
-        && request.resource.data.type in ['private', 'group']
+        && request.resource.data.type in ['private', 'group', 'channel']
         && request.resource.data.createdBy == uid()
         && uid() in request.resource.data.memberIds
         && uid() in request.resource.data.admins
@@ -187,6 +411,11 @@ service cloud.firestore {
         && request.resource.data.createdAt == resource.data.createdAt
         // Membership: either untouched, or changed by an admin (adds/removes),
         // or the caller is removing themselves (leave / delete chat).
+        //
+        // Channels are special: a join legitimately adds the caller via the
+        // server invite path, so channels may grow by exactly the caller. A
+        // channel must never be *shrunk* by a non-admin, which is what the
+        // self-leave branch below would otherwise permit.
         && (
              request.resource.data.memberIds == resource.data.memberIds
              || (uid() in resource.data.admins
@@ -195,6 +424,23 @@ service cloud.firestore {
              || (!(uid() in request.resource.data.memberIds)
                  && request.resource.data.memberIds.size() == resource.data.memberIds.size() - 1
                  && request.resource.data.memberIds.toSet().difference(resource.data.memberIds.toSet()).size() == 0)
+             || (request.resource.data.type == 'channel'
+                 && request.resource.data.memberIds.size() == resource.data.memberIds.size() + 1
+                 && request.resource.data.memberIds.toSet()
+                      == resource.data.memberIds.toSet().union([uid()].toSet())
+                 && isUsableServerInvite(
+                      get(/databases/$(database)/documents/servers/$(resource.data.serverId)/members/$(uid())).data.inviteCode,
+                      resource.data.serverId))
+           )
+        // A channel's name, server and type are structural: only admins change
+        // them. Ordinary members can update unread/mute/mute-adjacent fields.
+        && (
+             request.resource.data.type != 'channel'
+             || (
+                  (request.resource.data.name == resource.data.name
+                   && request.resource.data.serverId == resource.data.serverId)
+                  || isServerAdmin(resource.data.serverId)
+                )
            )
         // Admins: unchanged, or an existing admin made the change, or the
         // caller dropped their own admin flag by leaving.
