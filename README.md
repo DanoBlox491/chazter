@@ -182,15 +182,35 @@ service-account key.
 ```bash
 npm install -g firebase-tools
 firebase login
-firebase deploy --only firestore:rules,firestore:indexes,storage
+npm run deploy:rules
 ```
+
+That deploys **only** Firestore rules and indexes — the part the app cannot
+run without.
+
+> **Do not include `storage` in the same command until Cloud Storage is
+> enabled.** The Firebase CLI validates every requested target *before*
+> deploying any of them, so a missing Storage bucket aborts the whole run and
+> your Firestore rules are never published. That produces a confusing
+> `Firebase Storage has not been set up` error while the real problem is that
+> nothing deployed at all.
+
+Once Cloud Storage is set up (step 4), deploy its rules separately:
+
+```bash
+npm run deploy:storage
+```
+
+If you prefer raw commands, the equivalents are
+`firebase deploy --only firestore:rules,firestore:indexes` and
+`firebase deploy --only storage`.
 
 The repository includes a `.firebaserc` that points `default` at
 **`chazter-fcf99`**, so no `firebase use` step is needed for this project.
 If you deploy to a different project, either pass it explicitly:
 
 ```bash
-firebase deploy --project your-project-id --only firestore:rules,firestore:indexes,storage
+firebase deploy --project your-project-id --only firestore:rules,firestore:indexes
 ```
 
 ...or change the alias once:
@@ -489,7 +509,8 @@ to test a rules change.
 | `permission-denied` on every read | Rules not deployed | `firebase deploy --only firestore:rules` |
 | `Error: No currently active project` | CLI has no default project | Commit `.firebaserc` (included) or add `--project chazter-fcf99` |
 | `permission-denied` when sending | Rules deployed but out of date | Re-deploy after pulling; check `rules.contract` tests |
-| Image upload fails with "Storage isn't enabled" | Storage not set up | Build → Storage → Get started, then deploy `storage.rules` |
+| `Firebase Storage has not been set up` during deploy | Storage included before it was enabled — this aborts the whole run | `npm run deploy:rules` first, then enable Storage, then `npm run deploy:storage` |
+| Image upload fails with "Storage isn't enabled" | Storage not set up | Build → Storage → Get started, then `npm run deploy:storage` |
 | Blank page on GitHub Pages | Wrong base path | Ensure `VITE_BASE_PATH=/<repo>/` at build time |
 | `Deploy to GitHub Pages` fails at *Configure GitHub Pages* with `404` / `Resource not accessible by integration` | Pages was never enabled | Settings → Pages → Source: **GitHub Actions** (one time) |
 | Username feels "taken" but isn't | Stale claim from a failed signup | The claim is released on account deletion; delete the `usernames/{handle}` doc in the console if you are certain |
