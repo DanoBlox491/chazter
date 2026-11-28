@@ -22,7 +22,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 24.12.0
+          node-version: 22
           cache: npm
 
       - name: Install dependencies
@@ -46,8 +46,13 @@ jobs:
       - name: Disable Jekyll
         run: touch dist/.nojekyll
 
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
+      # NOTE: actions/configure-pages is deliberately not used here.
+      # It performs GET /repos/{owner}/{repo}/pages, which returns 404 until
+      # Pages has been enabled once in repository settings, and a 404 fails
+      # this job. Its only useful output (base_path) is already supplied
+      # explicitly through VITE_BASE_PATH, so the step is unnecessary.
+      # Enablement is a one-time manual step: Settings -> Pages -> Source:
+      # GitHub Actions. See README "Building and deploying".
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

@@ -409,12 +409,28 @@ firebase deploy --only hosting
 The included workflow `.github/workflows/deploy-pages.yml` builds and publishes
 on every push to `main`.
 
-1. Push the repository.
-2. **Settings → Pages → Build and deployment → Source: GitHub Actions**.
-3. Push to `main` — the workflow publishes `dist/`.
+> **Step 2 is mandatory and cannot be automated from the workflow.**
+> Until Pages is enabled in repository settings, GitHub has no Pages site for
+> the repository, so the Pages API returns `404 Not Found`. Earlier revisions
+> of this workflow called `actions/configure-pages` with `enablement: true` to
+> create the site automatically — that always fails under `GITHUB_TOKEN` with
+> **`Resource not accessible by integration`**, because `GITHUB_TOKEN` cannot
+> administer the repository. The action's own documentation states a personal
+> access token or GitHub App with `administration:write` is required. Chazter
+> therefore treats enabling Pages as a documented one-time manual step and does
+> not call that action at all.
+
+1. Push the repository to `main`.
+2. **Settings → Pages → Build and deployment → Source: GitHub Actions.**
+   Do this once; it is what actually creates the Pages site.
+3. Push to `main` (or **Actions → Deploy to GitHub Pages → Run workflow**).
+   The workflow publishes `dist/`.
 4. Add `<username>.github.io` to Firebase **Authentication → Authorized domains**.
 5. **Settings → Secrets and variables → Actions → Variables**: add the
    `VITE_FIREBASE_*` variables if you deploy your own project.
+
+If the *Deploy to GitHub Pages* run fails with `Get Pages site failed ... 404`,
+you skipped step 2.
 
 Because Pages serves from `/<repo>/`, the workflow sets
 `VITE_BASE_PATH=/<repo>/`. The app's router uses Vite's `BASE_URL`, so routing
@@ -452,6 +468,7 @@ to test a rules change.
 | `permission-denied` when sending | Rules deployed but out of date | Re-deploy after pulling; check `rules.contract` tests |
 | Image upload fails with "Storage isn't enabled" | Storage not set up | Build → Storage → Get started, then deploy `storage.rules` |
 | Blank page on GitHub Pages | Wrong base path | Ensure `VITE_BASE_PATH=/<repo>/` at build time |
+| `Deploy to GitHub Pages` fails at *Configure GitHub Pages* with `404` / `Resource not accessible by integration` | Pages was never enabled | Settings → Pages → Source: **GitHub Actions** (one time) |
 | Username feels "taken" but isn't | Stale claim from a failed signup | The claim is released on account deletion; delete the `usernames/{handle}` doc in the console if you are certain |
 | Typing indicator stuck | Client crashed before clearing | It self-expires after 6 s |
 | `auth/requires-recent-login` | Sensitive action after a long session | Sign out and back in, then retry |
