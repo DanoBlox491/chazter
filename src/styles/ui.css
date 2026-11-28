@@ -1150,3 +1150,19 @@
 .avatar {
   --dot-size: 11px;
 }
+
+/* Technical detail appended to error states (e.g. a Firebase error code).
+   Small and muted so it informs without competing with the human message. */
+.empty-state__detail {
+  margin: calc(var(--space-1) * -1) 0 0;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.empty-state__detail code {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  background: var(--bg-inset);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-sm, 6px);
+  padding: 1px 6px;
+}

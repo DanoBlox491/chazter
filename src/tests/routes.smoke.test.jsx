@@ -11,7 +11,7 @@ import { render, screen, waitFor } from '@testing-library/react';
  */
 
 const { fixture, authState } = vi.hoisted(() => ({
-  fixture: { profile: null, conversations: [], messages: [], typing: [], receipts: {} },
+  fixture: { profile: null, conversations: [], conversationsError: null, messages: [], typing: [], receipts: {} },
   authState: { user: null },
 }));
 
@@ -37,7 +37,11 @@ vi.mock('../lib/services/userService.js', () => ({
 vi.mock('../lib/services/conversationService.js', () => {
   const ok = () => Promise.resolve();
   return {
-    subscribeConversations: (_uid, onData) => {
+    subscribeConversations: (_uid, onData, onError) => {
+      if (fixture.conversationsError && onError) {
+        onError(fixture.conversationsError);
+        return noopUnsub;
+      }
       onData(fixture.conversations, { fromCache: false });
       return noopUnsub;
     },
@@ -147,6 +151,7 @@ beforeEach(() => {
   authState.user = null;
   fixture.profile = null;
   fixture.conversations = [];
+  fixture.conversationsError = null;
   fixture.messages = [];
   fixture.typing = [];
   fixture.receipts = {};
@@ -167,5 +172,33 @@ describe.each(ROUTES)('route %s', (route) => {
     await new Promise((resolve) => setTimeout(resolve, 150));
 
     expect(screen.queryByText(/Something slipped/i)).toBeNull();
+  });
+});
+
+describe('inbox error states', () => {
+  it('renders permission-specific copy when the read is denied', async () => {
+    signedIn();
+    fixture.conversationsError = Object.assign(new Error('Missing or insufficient permissions.'), {
+      code: 'permission-denied',
+    });
+    window.history.pushState({}, '', '/app');
+    render(<App />);
+
+    // The real state must render, with copy that names the actual cause.
+    expect(await screen.findByText(/aren’t available yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/permission-denied/i)).toBeInTheDocument();
+
+    // And the misleading network wording must be gone.
+    expect(screen.queryByText(/Check your connection/i)).toBeNull();
+  });
+
+  it('renders reconnect copy for a transient network failure', async () => {
+    signedIn();
+    fixture.conversationsError = Object.assign(new Error('unavailable'), { code: 'unavailable' });
+    window.history.pushState({}, '', '/app');
+    render(<App />);
+
+    expect(await screen.findByText(/Reconnecting/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Check your connection/i)).toBeNull();
   });
 });
