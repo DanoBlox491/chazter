@@ -58,7 +58,11 @@ service cloud.firestore {
       return data.keys().hasOnly([
         'uid', 'username', 'usernameLower', 'displayName', 'email', 'photoURL', 'bio',
         'provider', 'createdAt', 'updatedAt', 'onboardingComplete', 'presence',
-        'lastReadAt', 'settings', 'displayNameLower'
+        'lastReadAt', 'settings', 'displayNameLower',
+        // The most recent invite this user redeemed. Bounded and short; it
+        // exists so a self-join can be authorised without a query, and it is
+        // never trusted for anything except that check.
+        'lastInviteCode'
       ]);
     }
 
@@ -80,6 +84,17 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/invites/$(code))
         && get(/databases/$(database)/documents/invites/$(code)).data.targetId == serverId
         && get(/databases/$(database)/documents/invites/$(code)).data.type == 'server'
+        && get(/databases/$(database)/documents/invites/$(code)).data.revoked == false;
+    }
+
+    /** A usable group invite: live, and naming this conversation. */
+    function isUsableGroupInvite(code, conversationId) {
+      return isSignedIn()
+        && code is string
+        && code.size() >= 8
+        && exists(/databases/$(database)/documents/invites/$(code))
+        && get(/databases/$(database)/documents/invites/$(code)).data.targetId == conversationId
+        && get(/databases/$(database)/documents/invites/$(code)).data.type == 'group'
         && get(/databases/$(database)/documents/invites/$(code)).data.revoked == false;
     }
 
@@ -225,7 +240,7 @@ service cloud.firestore {
       allow create: if isSignedIn()
         && request.resource.data.keys().hasOnly([
           'name', 'ownerId', 'createdAt', 'updatedAt', 'channelIds', 'memberCount',
-          'iconURL', 'schemaVersion', 'owner', 'memberIds'
+          'iconURL', 'schemaVersion', 'owner', 'memberIds', 'inviteCodes'
         ])
         && request.resource.data.ownerId == uid()
         && uid() in request.resource.data.memberIds
@@ -243,7 +258,11 @@ service cloud.firestore {
           (isServerAdmin(serverId)
             && request.resource.data.ownerId == resource.data.ownerId
             && request.resource.data.name is string
-            && request.resource.data.name.size() <= 48)
+            && request.resource.data.name.size() <= 48
+            // inviteCodes is the server's own invite registry, maintained by
+            // admins as codes are minted and revoked.
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['name', 'updatedAt', 'iconURL', 'channelIds', 'memberCount', 'inviteCodes']))
           ||
           // Self-join path: the ONLY change is adding the caller to memberIds
           // and bumping memberCount by one.
@@ -253,6 +272,10 @@ service cloud.firestore {
             && request.resource.data.name == resource.data.name
             && request.resource.data.channelIds == resource.data.channelIds
             && request.resource.data.memberCount == resource.data.memberCount + 1
+            // A joiner may ONLY add themselves. Without this, the same write
+            // could also append to inviteCodes or rewrite the owner block.
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['memberIds', 'memberCount', 'updatedAt'])
           )
           ||
           // Self-leave path: the only change is removing the caller.
@@ -262,6 +285,8 @@ service cloud.firestore {
             && request.resource.data.ownerId != uid()
             && request.resource.data.name == resource.data.name
             && request.resource.data.channelIds == resource.data.channelIds
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['memberIds', 'memberCount', 'updatedAt'])
           )
         );
 
@@ -280,16 +305,33 @@ service cloud.firestore {
         //
         // The create is also an escalation guard: a self-join is always
         // `role == 'member'`, so nobody can write themselves in as an admin.
+        // Two legitimate ways to appear here:
+        //
+        //   1. OWNER BOOTSTRAP. `createServer` writes the server, its first
+        //      channel and the owner's member record in one batch, so there is
+        //      no invite to present and a plain `get()` on the server would
+        //      not see the uncommitted write. `getAfter()` does see it, and
+        //      the owner role is self-authorising because it can only be
+        //      claimed by the uid the server document already names.
+        //   2. SELF-JOIN with a valid, unrevoked invite for THIS server.
+        //
+        // Either way the write is to your own record, and the role is fixed
+        // by the branch - nobody can write themselves in as an 'admin'.
         allow create: if isSignedIn()
           && memberId == uid()
           && request.resource.data.uid == uid()
           && request.resource.data.serverId == serverId
-          && request.resource.data.role == 'member'
           && request.resource.data.keys().hasOnly([
             'serverId', 'uid', 'role', 'joinedAt', 'displayName', 'username',
             'photoURL', 'inviteCode'
           ])
-          && isUsableServerInvite(request.resource.data.inviteCode, serverId);
+          && (
+            (request.resource.data.role == 'member'
+              && isUsableServerInvite(request.resource.data.inviteCode, serverId))
+            ||
+            (request.resource.data.role == 'owner'
+              && getAfter(/databases/$(database)/documents/servers/$(serverId)).data.ownerId == uid())
+          );
 
         // Only admins may change roles. `isServerAdmin` already implies a
         // signed-in caller; the explicit check makes that legible here and
@@ -327,7 +369,15 @@ service cloud.firestore {
      * work. It exposes only the target's name and type, never its contents.
      */
     match /invites/{code} {
+      // `get` is open to any signed-in user: that is what makes a shared link
+      // work without knowing its target.
       allow get: if isSignedIn();
+
+      // `list` is deliberately NOT granted. Listing would reveal codes for
+      // arbitrary targets - a directory of keys to every server - and the
+      // admin screen does not use a query: it reads the target's `inviteCodes`
+      // registry and fetches each invite directly. No unused permission is
+      // left here, because an untested path is how holes ship.
 
       // Only owners/admins of the target may mint a link. Group invites check
       // the conversation's admin list instead of a server role.
@@ -385,13 +435,25 @@ service cloud.firestore {
           'type', 'name', 'photoURL', 'color', 'createdBy', 'createdAt', 'updatedAt',
           'memberIds', 'members', 'admins', 'lastMessage', 'lastMessageAt', 'typing',
           'mutedBy', 'archivedBy', 'unreadCounts', 'lastReadAt', 'schemaVersion',
-          'serverId', 'topic'
+          'serverId', 'topic', 'inviteCodes'
         ])
         && request.resource.data.type in ['private', 'group', 'channel']
         && request.resource.data.createdBy == uid()
         && uid() in request.resource.data.memberIds
-        && uid() in request.resource.data.admins
-        && request.resource.data.memberIds.size() >= 2
+        // A channel is a single room inside a server: it needs ONE member (it
+        // can legitimately start as just its creator) and it has no per-channel
+        // admins - authority lives on the server document. Chats and groups
+        // keep the admin rule and the two-person minimum.
+        && (
+             (request.resource.data.type == 'channel'
+               && request.resource.data.admins.size() == 0
+               && request.resource.data.serverId is string
+               && isServerAdmin(request.resource.data.serverId))
+             ||
+             (request.resource.data.type != 'channel'
+               && uid() in request.resource.data.admins
+               && request.resource.data.memberIds.size() >= 2)
+           )
         && request.resource.data.memberIds.size() <= 64
         // A private conversation must be exactly you + one other person.
         && (request.resource.data.type != 'private'
@@ -424,13 +486,31 @@ service cloud.firestore {
              || (!(uid() in request.resource.data.memberIds)
                  && request.resource.data.memberIds.size() == resource.data.memberIds.size() - 1
                  && request.resource.data.memberIds.toSet().difference(resource.data.memberIds.toSet()).size() == 0)
+             // Channels also grow by exactly the caller (a server join adds
+             // them to every channel). The KEY detail is the user document:
+             // `users/{uid}` always exists for a signed-in, onboarded account,
+             // so reading it cannot fail the way reading a not-yet-created
+             // server member record would. The code being checked is the one
+             // this user most recently joined with.
              || (request.resource.data.type == 'channel'
                  && request.resource.data.memberIds.size() == resource.data.memberIds.size() + 1
                  && request.resource.data.memberIds.toSet()
                       == resource.data.memberIds.toSet().union([uid()].toSet())
+                 && request.resource.data.diff(resource.data).affectedKeys()
+                      .hasOnly(['memberIds', 'members', 'unreadCounts', 'lastReadAt', 'updatedAt', 'typing', 'mutedBy', 'archivedBy', 'lastMessage', 'lastMessageAt'])
                  && isUsableServerInvite(
-                      get(/databases/$(database)/documents/servers/$(resource.data.serverId)/members/$(uid())).data.inviteCode,
+                      get(/databases/$(database)/documents/users/$(uid())).data.lastInviteCode,
                       resource.data.serverId))
+             // Group invites: same idea for a group chat. A group has no
+             // server, so the check is that the invite names THIS
+             // conversation and is still live.
+             || (request.resource.data.type == 'group'
+                 && request.resource.data.memberIds.size() == resource.data.memberIds.size() + 1
+                 && request.resource.data.memberIds.toSet()
+                      == resource.data.memberIds.toSet().union([uid()].toSet())
+                 && isUsableGroupInvite(
+                      get(/databases/$(database)/documents/users/$(uid())).data.lastInviteCode,
+                      conversationId))
            )
         // A channel's name, server and type are structural: only admins change
         // them. Ordinary members can update unread/mute/mute-adjacent fields.
@@ -473,11 +553,19 @@ service cloud.firestore {
                  && request.resource.data.lastMessage.text.size() <= 4100)
            );
 
-      // Deleting: admins (or creators) may delete a group; either member may
-      // delete an empty private chat.
+      // Deleting: admins may delete a group; a server admin may delete one of
+      // its channels; either member may delete a private chat.
+      //
+      // Channels have no per-channel admins, so the admin check has to be
+      // against the SERVER - without this branch no channel could ever be
+      // removed (the general rule was written before servers existed).
       allow delete: if isSignedIn()
         && isMember(conversationId)
-        && (uid() in conversationData(conversationId).admins);
+        && (
+          uid() in conversationData(conversationId).admins
+          || (conversationData(conversationId).type == 'channel'
+              && isServerAdmin(conversationData(conversationId).serverId))
+        );
 
       /* ---------------------------- messages ------------------------ */
       match /messages/{messageId} {

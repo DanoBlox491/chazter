@@ -26,6 +26,26 @@ jobs:
       - run: npm test
       - run: npm run build
 
+      # A skipped deploy step looks exactly like a successful run on the
+      # Actions list, which is how the security rules went un-deployed for
+      # several releases while everything appeared green. Warn loudly instead.
+      - name: Warn when the deploy secret is missing
+        if: ${{ env.FIREBASE_SERVICE_ACCOUNT == '' }}
+        run: |
+          echo "::warning title=Firestore rules are NOT deployed::The FIREBASE_SERVICE_ACCOUNT secret is not set, so this run only tested the app. Every database read will fail with permission-denied until the rules are published."
+          {
+            echo "### ⚠️ Rules were not deployed"
+            echo ""
+            echo "The \`FIREBASE_SERVICE_ACCOUNT\` secret is missing, so this run only tested and built the app."
+            echo ""
+            echo "Until the rules are published, every database read fails with \`permission-denied\`."
+            echo "Either add the secret, or deploy from a machine with Firebase CLI access:"
+            echo ""
+            echo '\`\`\`bash'
+            echo "npm run deploy:rules"
+            echo '\`\`\`'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       # Deployment runs only when the repository service-account secret exists.
       - name: Deploy
         if: ${{ env.FIREBASE_SERVICE_ACCOUNT != '' }}

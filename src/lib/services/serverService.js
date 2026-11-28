@@ -27,7 +27,6 @@ import {
   onSnapshot,
   query,
   serverTimestamp,
-  setDoc,
   updateDoc,
   where,
   writeBatch,
@@ -315,7 +314,16 @@ export async function createInvite(profile, { type, targetId, targetName }) {
     createdBy: profile.uid,
     createdByName: profile.displayName,
   });
-  await setDoc(inviteRef(code), { ...payload, code });
+  const batch = writeBatch(db);
+  batch.set(inviteRef(code), { ...payload, code });
+  // Register the code on the target so the management screen can find it
+  // again without a collection query (see listInvites).
+  if (type === INVITE_TYPES.server) {
+    batch.update(serverRef(targetId), { inviteCodes: arrayUnion(code) });
+  } else {
+    batch.update(convRef(targetId), { inviteCodes: arrayUnion(code) });
+  }
+  await batch.commit();
   return { code, ...payload };
 }
 
@@ -329,22 +337,46 @@ export async function getInvite(code) {
 }
 
 /**
- * List the invites for a server/group so an admin can see and revoke them.
- * Requires only read on the invite documents, which the rules scope to
- * creators and admins.
+ * List the active invites for a server or group.
+ *
+ * Deliberately NOT a collection query. The rules authorise an invite read by
+ * checking admin rights on its target, which requires a `get()` per result
+ * document — and Firestore caps a single query at roughly 20 document
+ * accesses. A server with a few channels and members would blow that budget
+ * and the whole list would fail with `permission-denied`.
+ *
+ * Instead the target document carries `inviteCodes`, and each code is fetched
+ * directly: a small, predictable number of reads that the rules evaluate one
+ * at a time.
  */
 export async function listInvites({ type, targetId }) {
-  const q = query(invitesCol(), where('targetId', '==', targetId), where('type', '==', type), limit(25));
-  const snap = await getDocs(q);
-  return snap.docs
-    .map((item) => ({ code: item.id, ...item.data() }))
+  if (!targetId) return [];
+  const parent = type === INVITE_TYPES.server ? serverRef(targetId) : convRef(targetId);
+  const parentSnap = await getDoc(parent);
+  if (!parentSnap.exists()) return [];
+  const codes = (parentSnap.data().inviteCodes || []).slice(-25);
+  if (!codes.length) return [];
+
+  const snaps = await Promise.all(codes.map((code) => getDoc(inviteRef(code))));
+  return snaps
+    .filter((snap) => snap.exists())
+    .map((snap) => ({ code: snap.id, ...snap.data() }))
     .filter((invite) => !invite.revoked)
     .sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
 }
 
-/** Revoke. The code stays reserved but stops granting access. */
-export async function revokeInvite(code) {
-  await updateDoc(inviteRef(code), { revoked: true, revokedAt: serverTimestamp() });
+/**
+ * Revoke. The code stays reserved (so it can never be reissued to someone
+ * else) but stops granting access, and is removed from the target's registry.
+ */
+export async function revokeInvite(code, { type, targetId } = {}) {
+  const batch = writeBatch(db);
+  batch.update(inviteRef(code), { revoked: true, revokedAt: serverTimestamp() });
+  if (type && targetId) {
+    const parent = type === INVITE_TYPES.server ? serverRef(targetId) : convRef(targetId);
+    batch.update(parent, { inviteCodes: arrayRemove(code) });
+  }
+  await batch.commit();
 }
 
 /* ------------------------------------------------------------------ *
@@ -373,6 +405,11 @@ async function joinServerViaInvite(invite, profile) {
 
   const existing = await getServerMembership(serverId, profile.uid);
   if (existing) return { serverId, channelId: server.channelIds?.[0] || null, alreadyMember: true };
+
+  // Record the invite on the user's own profile FIRST. The rules read this
+  // field to authorise the self-join, so it has to be committed before the
+  // channel/membership writes that depend on it.
+  await recordRedeemedInvite(profile.uid, invite.code);
 
   const channelIds = server.channelIds || [];
   const batch = writeBatch(db);
@@ -415,6 +452,7 @@ async function joinGroupViaInvite(invite, profile) {
   if (data.memberIds?.includes(profile.uid)) {
     return { conversationId: invite.targetId, alreadyMember: true };
   }
+  await recordRedeemedInvite(profile.uid, invite.code);
   if ((data.memberIds?.length || 0) >= 64) {
     throw new AppError('group-full', 'That group is full.');
   }
@@ -452,6 +490,20 @@ export async function leaveServer(serverId, uid) {
     batch.update(convRef(channelId), { memberIds: arrayRemove(uid) });
   }
   await batch.commit();
+}
+
+/**
+ * Remember which invite this user redeemed.
+ *
+ * The join rules authorise a self-join by reading this field on the user's own
+ * profile: it lets a write prove "I hold a valid invite for this exact target"
+ * without a query, and it allows the rule to be enforced at all — the obvious
+ * alternative (reading the server member record) targets a document that does
+ * not exist yet at the moment the check runs.
+ */
+async function recordRedeemedInvite(uid, code) {
+  const { updateUserProfile } = await import('./userService.js');
+  await updateUserProfile(uid, { lastInviteCode: code });
 }
 
 /**

@@ -77,6 +77,11 @@ export function buildServer({ ownerId, ownerProfile, name, channels }) {
     updatedAt: serverTimestamp(),
     // Ordered list of channel ids so the sidebar needs no second query.
     channelIds: channels.map((channel) => channel.id),
+    // Codes of this server's active invites. Kept on the document so the
+    // management screen can list them with N cheap `get`s instead of a
+    // collection query, which Firestore would have to prove safe per
+    // document (and which is capped at ~20 document accesses).
+    inviteCodes: [],
     memberCount: 1,
     iconURL: '',
     schemaVersion: 1,

@@ -367,3 +367,104 @@ describe('channel membership rules', () => {
     expect(update).toMatch(/isServerAdmin\(resource\.data\.serverId\)/);
   });
 });
+
+/* ==================================================================== *
+ * Authorization chain — the bugs that produced a real `permission-denied`
+ * --------------------------------------------------------------------
+ * The previous suite checked rule *shapes* and still let four showstoppers
+ * through, because none of them were about security: they were about rules
+ * denying legitimate work.
+ *
+ *   1. createServer() writes the owner's member record with no invite to
+ *      present -> the owner could never create a server.
+ *   2. createChannel() writes a channel with `admins: []`, but the create
+ *      rule demanded the creator be in `admins` -> no channel could exist.
+ *   3. listInvites() ran a collection query while the rule allowed only
+ *      `get` -> the invite screen failed.
+ *   4. deleteChannel() required `uid() in admins`, and channels have none.
+ *
+ * Each assertion below is written against the failure it prevents.
+ * ==================================================================== */
+describe('authorization chain (would deny real work)', () => {
+  const memberBlock = rules.slice(
+    rules.indexOf('match /members/{memberId}'),
+    rules.indexOf('match /invites/{code} {', rules.indexOf('match /members/{memberId}')),
+  );
+
+  it('lets the owner bootstrap their own member record without an invite', () => {
+    // The owner branch must exist AND be tied to the server naming them owner.
+    expect(memberBlock).toMatch(/request\.resource\.data\.role == 'owner'/);
+    expect(memberBlock).toMatch(/getAfter\(/);
+    expect(memberBlock).toMatch(/data\.ownerId == uid\(\)/);
+  });
+
+  it('still requires an invite for a plain-member self-join', () => {
+    expect(memberBlock).toMatch(/request\.resource\.data\.role == 'member'\s*&&\s*isUsableServerInvite/s);
+  });
+
+  it('allows creating a channel without per-channel admins', () => {
+    const create = rules.slice(
+      rules.indexOf('allow create: if isSignedIn()\n        && request.resource.data.keys().hasOnly(['),
+      rules.indexOf('// Updates: any member may update'),
+    );
+    expect(create).toMatch(/type == 'channel'\s*&&\s*request\.resource\.data\.admins\.size\(\) == 0/s);
+    // ...and that the normal path still requires an admin for chats/groups.
+    expect(create).toMatch(/uid\(\) in request\.resource\.data\.admins/);
+  });
+
+  it('does not require two members for a channel', () => {
+    const create = rules.slice(
+      rules.indexOf('allow create: if isSignedIn()\n        && request.resource.data.keys().hasOnly(['),
+      rules.indexOf('// Updates: any member may update'),
+    );
+    // The `>= 2` minimum must be inside the non-channel branch only.
+    const channelBranch = create.slice(create.indexOf("type == 'channel'"), create.indexOf("type != 'channel'"));
+    expect(channelBranch).not.toMatch(/size\(\) >= 2/);
+  });
+
+  it('lets a server admin delete a channel despite channels having no admins', () => {
+    const start = rules.indexOf('// Deleting: admins may delete a group');
+    expect(start, 'channel delete rule missing').toBeGreaterThan(-1);
+    // Bound on the next rule, not the next comment block: the explanatory
+    // comment above this rule itself contains `/*`.
+    const body = rules.slice(start, rules.indexOf('allow delete:', start) + 400);
+    // The predicate is split across lines, so match with \s* rather than
+    // assuming one line - matching on a single line is exactly the kind of
+    // brittle assertion that passes while the rule is wrong.
+    expect(body).toMatch(/\.type == 'channel'/);
+    expect(body).toMatch(/isServerAdmin\(/);
+  });
+
+  it('authorises a channel self-join from the user profile, not a missing member doc', () => {
+    const update = rules.slice(
+      rules.indexOf('allow update: if isMember(conversationId)'),
+      rules.indexOf('/* ---------------------------- messages'),
+    );
+    // Reading the server member record here would always fail: this very
+    // write is what creates it.
+    expect(update).not.toMatch(/servers\/\$\(resource\.data\.serverId\)\/members/);
+    expect(update).toMatch(/documents\/users\/\$\(uid\(\)\)\)\.data\.lastInviteCode/);
+  });
+
+  it('supports group invites, which had no self-add branch at all', () => {
+    const update = rules.slice(
+      rules.indexOf('allow update: if isMember(conversationId)'),
+      rules.indexOf('/* ---------------------------- messages'),
+    );
+    expect(update).toMatch(/isUsableGroupInvite\(/);
+  });
+
+  it('permits the join write to touch only what a join needs', () => {
+    const update = rules.slice(
+      rules.indexOf('allow update: if isMember(conversationId)'),
+      rules.indexOf('/* ---------------------------- messages'),
+    );
+    expect(update).toMatch(/affectedKeys\(\)\s*\.hasOnly\(\['memberIds', 'members', 'unreadCounts'/s);
+  });
+
+  it('never lists invites (a directory of keys to every server)', () => {
+    const invites = rules.slice(rules.indexOf('match /invites/{code} {'));
+    expect(invites).not.toMatch(/allow list:/);
+    expect(invites).toMatch(/allow get: if isSignedIn\(\);/);
+  });
+});

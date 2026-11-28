@@ -10,7 +10,7 @@ import { useServers } from '../hooks/useServers.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useMediaQuery } from '../hooks/useMisc.js';
 import { getServer, getServerMembership, subscribeChannels } from '../lib/services/serverService.js';
-import { conversationErrorCopy } from '../lib/utils/conversationError.js';
+import { conversationErrorCopy, DEPLOY_RULES_COMMAND } from '../lib/utils/conversationError.js';
 import { cx } from '../lib/utils/general.js';
 
 /**
@@ -95,14 +95,19 @@ export default function ServerWorkspace() {
   if (serversLoading && !server) return <AppLoading />;
 
   if (serversError) {
-    const copy = conversationErrorCopy(serversError);
+    // Name the subject accurately: this screen is about servers, not chats.
+    const copy = conversationErrorCopy(serversError, { subject: 'servers' });
     return (
       <ErrorState
         title={copy.title}
-        description={copy.description}
+        description={
+          copy.action === 'deploy-rules'
+            ? `${copy.description} Run ${DEPLOY_RULES_COMMAND} from the project folder, then reload.`
+            : copy.description
+        }
         detail={serversError?.code}
         onRetry={() => window.location.reload()}
-        retryLabel="Reload Chazter"
+        retryLabel={copy.action === 'deploy-rules' ? 'Reload Chazter' : 'Try again'}
       />
     );
   }
