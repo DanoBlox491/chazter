@@ -182,9 +182,31 @@ service-account key.
 ```bash
 npm install -g firebase-tools
 firebase login
-firebase use --add          # select your project, give it an alias
 firebase deploy --only firestore:rules,firestore:indexes,storage
 ```
+
+The repository includes a `.firebaserc` that points `default` at
+**`chazter-fcf99`**, so no `firebase use` step is needed for this project.
+If you deploy to a different project, either pass it explicitly:
+
+```bash
+firebase deploy --project your-project-id --only firestore:rules,firestore:indexes,storage
+```
+
+...or change the alias once:
+
+```bash
+firebase use --add        # pick your project, name it "default"
+firebase use              # confirm which project is active
+```
+
+> **`Error: No currently active project`** means the CLI has no default. Either
+> commit a `.firebaserc` (this repo has one) or add `--project <id>`. It is not
+> a permissions problem.
+>
+> **Ignore the `(chazter-fcf99)` suffix in your shell prompt** — that is only the
+> active *gcloud* configuration name, not a Firebase project selection. The
+> Firebase CLI tracks its own target in `.firebaserc`.
 
 The rules are the real security boundary — **the app will not work correctly
 without them**, because client writes are validated against them.
@@ -465,6 +487,7 @@ to test a rules change.
 | --- | --- | --- |
 | `auth/unauthorized-domain` | Domain not allowlisted | Authentication → Settings → Authorized domains |
 | `permission-denied` on every read | Rules not deployed | `firebase deploy --only firestore:rules` |
+| `Error: No currently active project` | CLI has no default project | Commit `.firebaserc` (included) or add `--project chazter-fcf99` |
 | `permission-denied` when sending | Rules deployed but out of date | Re-deploy after pulling; check `rules.contract` tests |
 | Image upload fails with "Storage isn't enabled" | Storage not set up | Build → Storage → Get started, then deploy `storage.rules` |
 | Blank page on GitHub Pages | Wrong base path | Ensure `VITE_BASE_PATH=/<repo>/` at build time |
