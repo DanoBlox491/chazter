@@ -6,6 +6,10 @@ import react from '@vitejs/plugin-react';
  *
  * `VITE_BASE_PATH` lets the app be deployed under a sub-path such as
  * `/chazter/` (GitHub Pages) while staying `/` in local development.
+ *
+ * Leave dependency chunking to Vite/Rolldown. Manually forcing Firebase's
+ * modular SDK and its internal @firebase packages into one chunk can disturb
+ * module initialization order (including Auth component registration).
  */
 export default defineConfig(({ mode }) => ({
   base: process.env.VITE_BASE_PATH || '/',
@@ -30,19 +34,6 @@ export default defineConfig(({ mode }) => ({
     outDir: 'dist',
     sourcemap: mode !== 'production',
     chunkSizeWarningLimit: 1200,
-    rollupOptions: {
-      output: {
-        // Vite 8 (Rolldown) requires manualChunks to be a function.
-        manualChunks(id) {
-          if (!id.includes('node_modules')) return undefined;
-          if (id.includes('firebase') || id.includes('@firebase')) return 'firebase';
-          if (/node_modules\/(react|react-dom|react-router|react-router-dom)/.test(id)) {
-            return 'react';
-          }
-          return undefined;
-        },
-      },
-    },
   },
   test: {
     environment: 'jsdom',
