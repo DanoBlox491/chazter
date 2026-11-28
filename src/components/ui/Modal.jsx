@@ -14,7 +14,16 @@ export function Modal({ open, onClose, title, description, children, footer, siz
   const [mounted, setMounted] = useState(open);
 
   useEffect(() => {
-    if (open) setMounted(true);
+    if (open) {
+      setMounted(true);
+      return undefined;
+    }
+    // Unmount *after* the closing animation. Leaving the portal mounted left a
+    // full-screen fixed overlay in the DOM forever: it was invisible, but it
+    // still covered the page and swallowed every click, so the app looked
+    // frozen until a reload. The portal must always end up removed.
+    const timer = setTimeout(() => setMounted(false), 200);
+    return () => clearTimeout(timer);
   }, [open]);
 
   useEffect(() => {
@@ -66,6 +75,8 @@ export function Modal({ open, onClose, title, description, children, footer, siz
   return createPortal(
     <div
       className={cx('modal', open ? 'is-open' : 'is-closing')}
+      // While closing, nothing inside should accept input.
+      aria-hidden={!open || undefined}
       role="dialog"
       aria-modal="true"
       aria-labelledby={labelledBy || (title ? 'modal-title' : undefined)}
