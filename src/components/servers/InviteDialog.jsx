@@ -85,7 +85,7 @@ export function InviteDialog({ open, onClose, type, targetId, targetName, canCre
 
   const handleRevoke = async (code) => {
     try {
-      await revokeInvite(code);
+      await revokeInvite(code, { type, targetId });
       await load();
       toast.info('Invite revoked', 'That link no longer works.');
     } catch (revokeError) {

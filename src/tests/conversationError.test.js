@@ -52,3 +52,30 @@ describe('conversation error copy', () => {
     }
   });
 });
+
+describe('error copy names the right subject', () => {
+  it('says "servers" when the servers listener fails, not "chats"', () => {
+    // The real bug this guards: clicking Servers showed "Your chats aren't
+    // available yet", which points the reader at the wrong thing entirely.
+    const copy = conversationErrorCopy({ code: 'permission-denied' }, { subject: 'servers' });
+    expect(copy.title).toMatch(/servers/i);
+    expect(copy.title).not.toMatch(/chats/i);
+  });
+
+  it('still says "chats" by default', () => {
+    const copy = conversationErrorCopy({ code: 'permission-denied' });
+    expect(copy.title).toMatch(/chats/i);
+  });
+
+  it('flags permission failures so the UI can name the actual fix', () => {
+    expect(conversationErrorCopy({ code: 'permission-denied' }).action).toBe('deploy-rules');
+    expect(conversationErrorCopy({ code: 'unavailable' }).action).toBe('retry');
+    expect(conversationErrorCopy({ code: 'whatever' }).action).toBe('retry');
+  });
+
+  it('handles a deleted server distinctly from a permission problem', () => {
+    const copy = conversationErrorCopy({ code: 'not-found' }, { subject: 'servers' });
+    expect(copy.action).toBe('back');
+    expect(copy.title).not.toMatch(/permission/i);
+  });
+});
