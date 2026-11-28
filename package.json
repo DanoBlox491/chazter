@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Chazter \u2014 a real-time messaging platform built with React, Vite and Firebase.",
+  "description": "Chazter — a real-time messaging platform built with React, Vite and Firebase.",
   "license": "MIT",
   "engines": {
     "node": ">=20.19"
