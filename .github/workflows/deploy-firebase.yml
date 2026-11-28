@@ -12,6 +12,8 @@ jobs:
   deploy:
     name: Deploy rules and hosting
     runs-on: ubuntu-latest
+    env:
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
     steps:
       - uses: actions/checkout@v4
 
@@ -24,11 +26,9 @@ jobs:
       - run: npm test
       - run: npm run build
 
-      # Requires a FIREBASE_TOKEN or a service-account secret configured by
-      # the repository owner. This workflow is optional: `firebase deploy`
-      # from a developer machine works too.
+      # Deployment runs only when the repository service-account secret exists.
       - name: Deploy
-        if: ${{ secrets.FIREBASE_SERVICE_ACCOUNT != '' }}
+        if: ${{ env.FIREBASE_SERVICE_ACCOUNT != '' }}
         uses: w9jds/firebase-action@v13.29.1
         with:
           args: deploy --only hosting,firestore:rules,firestore:indexes,storage
