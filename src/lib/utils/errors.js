@@ -70,8 +70,21 @@ export function authErrorMessage(error) {
 export function firebaseErrorMessage(error, fallback = 'Something went wrong. Please try again.') {
   const code = error?.code || '';
   if (AUTH_MESSAGES[code]) return AUTH_MESSAGES[code];
-  if (FIRESTORE_MESSAGES[code]) return FIRESTORE_MESSAGES[code];
   if (customMessages.has(code)) return customMessages.get(code);
+
+  // permission-denied almost always means the deployed rules and the client
+  // disagree (stale rules, different project, or a path the rules deny). The
+  // Firebase message names the exact operation and path, so log it verbosely
+  // instead of silently collapsing it into "you don't have permission".
+  if (code === 'permission-denied') {
+    console.error(
+      '[chazter] permission-denied — check that firestore.rules is deployed to this project.',
+      { message: error?.message, path: error?.customData?.path, operation: error?.customData?.operation },
+    );
+    return FIRESTORE_MESSAGES[code];
+  }
+
+  if (FIRESTORE_MESSAGES[code]) return FIRESTORE_MESSAGES[code];
   if (error?.message && !import.meta.env.PROD && code) {
     console.warn('[chazter] Unmapped Firebase error', code, error);
   }

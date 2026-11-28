@@ -57,6 +57,10 @@ export function buildUserProfile({
     username: String(username).trim(),
     usernameLower,
     displayName: String(displayName).trim(),
+    // Lowercased copy used for prefix search (`orderBy('displayNameLower')`).
+    // Without it every people-search query silently returns nothing, because
+    // Firestore cannot order by a field the document never wrote.
+    displayNameLower: String(displayName || '').trim().toLowerCase(),
     email: String(email || '').toLowerCase(),
     photoURL: photoURL || '',
     bio: String(bio || '').trim(),

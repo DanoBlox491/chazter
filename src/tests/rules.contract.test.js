@@ -216,3 +216,34 @@ describe('rules hygiene', () => {
     expect(rules).toMatch(/request\.resource\.data\.senderId == uid\(\)/);
   });
 });
+
+describe('profile document completeness', () => {
+  it('writes displayNameLower, which people-search orders by', async () => {
+    const { buildUserProfile } = await import('../lib/services/models.js');
+    const profile = buildUserProfile({
+      uid: 'u1',
+      username: 'ada_lovelace',
+      displayName: 'Ada Lovelace',
+      provider: 'google',
+    });
+    // searchUsers() calls orderBy('displayNameLower'); a document without the
+    // field is simply absent from that index, so search returns nothing.
+    expect(profile).toHaveProperty('displayNameLower', 'ada lovelace');
+    expect(profile.displayNameLower).toBe(profile.displayName.toLowerCase());
+  });
+
+  it('keeps every profile key inside the rules allowlist', async () => {
+    const { buildUserProfile } = await import('../lib/services/models.js');
+    const profile = buildUserProfile({
+      uid: 'u1', username: 'ada_lovelace', displayName: 'Ada', provider: 'password',
+    });
+    const rules = readFileSync(resolve(process.cwd(), 'firestore.rules'), 'utf8');
+    const allowlist = rules.match(/function validProfileFields\(data\) \{[\s\S]*?hasOnly\(\[([\s\S]*?)\]\)/);
+    expect(allowlist, 'validProfileFields allowlist not found').toBeTruthy();
+    const allowed = [...allowlist[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+    const written = Object.keys(profile);
+    const extra = written.filter((key) => !allowed.includes(key));
+    // Any key outside the allowlist makes every profile write permission-denied.
+    expect(extra, `keys not allowlisted: ${extra.join(', ')}`).toEqual([]);
+  });
+});
