@@ -84,6 +84,12 @@ export async function createUserProfile({
   const claimRef = doc(usernamesCol(), usernameLower);
   const profileRef = userRef(uid);
 
+  // How a profile document already exists decides which rule applies: a real
+  // profile may only be *updated* (createdAt is immutable), while a fresh one
+  // must be *created*. Getting this backwards is exactly what produces a
+  // bare `permission-denied` on the onboarding screen.
+  let existingProfile = null;
+
   await runTransaction(db, async (transaction) => {
     // All reads must happen before any writes in a Firestore transaction.
     const claimSnap = await transaction.get(claimRef);
@@ -97,6 +103,7 @@ export async function createUserProfile({
       if (data.onboardingComplete) {
         throw new AppError('profile-exists', 'Your profile already exists.');
       }
+      existingProfile = data;
       // Retry path: profile shell exists (e.g. previous failed attempt) — reuse.
       if (data.usernameLower && data.usernameLower !== usernameLower) {
         const previousClaim = doc(usernamesCol(), data.usernameLower);
@@ -114,10 +121,15 @@ export async function createUserProfile({
       createdAt: serverTimestamp(),
     });
 
-    transaction.set(
-      profileRef,
-      buildUserProfile({ uid, username, displayName, photoURL, provider, bio }),
-    );
+    const nextProfile = buildUserProfile({ uid, username, displayName, photoURL, provider, bio });
+
+    if (existingProfile) {
+      // Update an existing shell: `set` with merge keeps createdAt intact so
+      // the immutable-createdAt rule still passes.
+      transaction.set(profileRef, nextProfile, { merge: true });
+    } else {
+      transaction.set(profileRef, nextProfile);
+    }
   });
 
   return getUserProfile(uid);
