@@ -79,8 +79,21 @@ vi.mock('../lib/services/conversationService.js', () => ({
     return () => {};
   },
   subscribeConversation: () => () => {},
+  normaliseConversation: (conversation) => conversation,
   startPrivateConversation: vi.fn(),
   createGroupConversation: vi.fn(),
+  addGroupMembers: vi.fn(() => Promise.resolve()),
+  removeMember: vi.fn(() => Promise.resolve()),
+  leaveConversation: vi.fn(() => Promise.resolve()),
+  updateGroupInfo: vi.fn(() => Promise.resolve()),
+  setMuted: vi.fn(() => Promise.resolve()),
+  setArchived: vi.fn(() => Promise.resolve()),
+  promoteToAdmin: vi.fn(() => Promise.resolve()),
+  updateReadCursor: vi.fn(() => Promise.resolve()),
+  getConversation: vi.fn(() => Promise.resolve(null)),
+  searchMessages: vi.fn(() => Promise.resolve([])),
+  searchAllMessages: vi.fn(() => Promise.resolve([])),
+  findUserByUsername: vi.fn(() => Promise.resolve(null)),
   markConversationRead: () => Promise.resolve(),
   setTyping: vi.fn(),
   clearTyping: vi.fn(),
@@ -92,11 +105,6 @@ vi.mock('../lib/services/conversationService.js', () => ({
     onData(workspaceFixture.receipts);
     return () => {};
   },
-  updateReadCursor: vi.fn(),
-  searchMessages: vi.fn(() => Promise.resolve([])),
-  leaveConversation: vi.fn(),
-  setMuted: vi.fn(),
-  setArchived: vi.fn(),
 }));
 
 vi.mock('../lib/services/messageService.js', () => ({
@@ -219,6 +227,26 @@ describe('public pages', () => {
   });
 });
 
+describe('onboarding', () => {
+  it('renders the profile setup screen for a signed-in user with no profile', async () => {
+    authState.user = {
+      uid: 'u9',
+      email: 'newcomer@example.com',
+      displayName: 'New Comer',
+      photoURL: '',
+      providerData: [{ providerId: 'google.com', displayName: 'New Comer', photoURL: '' }],
+    };
+    workspaceFixture.profile = null;
+    window.history.pushState({}, '', '/welcome');
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { level: 1 })).toBeInTheDocument();
+    expect(await screen.findByLabelText(/username/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/display name/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /enter chazter/i })).toBeInTheDocument();
+  });
+});
+
 describe('signed-in workspace', () => {
   it('renders the inbox with conversations, unread badge and nav', async () => {
     signedIn();
@@ -236,6 +264,19 @@ describe('signed-in workspace', () => {
     expect(screen.getByRole('link', { name: /find people/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /^settings$/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /your account menu/i })).toBeInTheDocument();
+  });
+
+  it('renders the empty inbox for a brand-new account', async () => {
+    // Regression: a user who has just completed onboarding has zero
+    // conversations. This state must render the empty state, not throw.
+    signedIn();
+    workspaceFixture.conversations = [];
+    workspaceFixture.messages = [];
+    window.history.pushState({}, '', '/app');
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: /^chats$/i })).toBeInTheDocument();
+    expect(await screen.findByText(/fresh page/i)).toBeInTheDocument();
   });
 
   it('opens a conversation and renders messages, ticks and composer', async () => {
