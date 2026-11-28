@@ -1780,3 +1780,26 @@ kbd {
 .profile-page__back {
   margin-bottom: var(--space-2);
 }
+
+/* --------------------------------------------------------------------------
+   Error boundary — diagnosis block
+   Shown in production so a crash reports its actual cause instead of only
+   "something slipped". Kept small and monospaced for easy copying.
+   -------------------------------------------------------------------------- */
+.crash__cause {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.crash__cause code {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.92em;
+  color: var(--danger);
+  background: var(--bg-inset);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-sm, 6px);
+  padding: 2px 6px;
+  word-break: break-word;
+}
