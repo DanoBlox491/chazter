@@ -77,7 +77,14 @@ export function EmptyState({ icon: Icon, art, title, description, action, compac
 }
 
 /** Error state with retry. */
-export function ErrorState({ title = 'Something went wrong', description, onRetry, retryLabel = 'Try again' }) {
+export function ErrorState({
+  title = 'Something went wrong',
+  description,
+  onRetry,
+  retryLabel = 'Try again',
+  /** Optional technical detail (a Firebase error code) shown in small type. */
+  detail,
+}) {
   return (
     <div className="empty-state empty-state--error" role="alert">
       <span className="empty-state__icon" aria-hidden="true">
@@ -89,6 +96,11 @@ export function ErrorState({ title = 'Something went wrong', description, onRetr
       </span>
       <h3 className="empty-state__title">{title}</h3>
       {description ? <p className="empty-state__description">{description}</p> : null}
+      {detail ? (
+        <p className="empty-state__detail">
+          <code>{detail}</code>
+        </p>
+      ) : null}
       {onRetry ? (
         <button type="button" className="btn btn--outline btn--sm" onClick={onRetry}>
           <span className="btn__label">{retryLabel}</span>

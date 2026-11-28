@@ -8,6 +8,7 @@ import { Button } from '../components/ui/Button.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useWorkspace } from '../context/NewChatContext.jsx';
 import { cx } from '../lib/utils/general.js';
+import { conversationErrorCopy } from '../lib/utils/conversationError.js';
 
 const ChatWindow = lazy(() => import('../components/chat/ChatWindow.jsx'));
 const PeopleDirectory = lazy(() => import('../components/people/PeopleDirectory.jsx'));
@@ -128,10 +129,19 @@ export function ChatWorkspace() {
               {loading ? (
                 <ListSkeleton rows={7} />
               ) : error ? (
+                /*
+                 * A denied read and a network failure need different words and
+                 * different actions. `permission-denied` means the server
+                 * rejected the query (rules not deployed, or a stale session) —
+                 * telling the user to "check your connection" is misleading and
+                 * retrying can never work. Everything else is treated as
+                 * transient, which the live listener genuinely recovers from.
+                 */
                 <ErrorState
-                  title="We couldn’t load your chats"
-                  description="Check your connection — Chazter will keep trying in the background."
+                  {...conversationErrorCopy(error)}
+                  detail={error?.code || undefined}
                   onRetry={() => window.location.reload()}
+                  retryLabel={error?.code === 'permission-denied' ? 'Reload Chazter' : 'Try again'}
                 />
               ) : conversations.length === 0 ? (
                 <EmptyState
